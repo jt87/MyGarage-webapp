@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "macros.html" import file_list, buy %}
+{% block title %}{{ t.model_name }} · {{ site_title }}{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / <a href="/tools?category={{ t.category|q }}">{{ t.category }}</a></nav>
+
+<div class="tool-hero">
+  <div class="gallery" data-gallery>
+    {% if t.photos %}
+      <a class="gallery-main" href="{{ t.photos[0].url }}" data-full="{{ t.photos[0].url }}">
+        <img src="{{ t.photos[0].thumb }}?w=1280" alt="{{ t.photos[0].label }}">
+      </a>
+      {% if t.photos|length > 1 %}
+      <div class="gallery-strip">
+        {% for f in t.photos %}
+        <button type="button" data-src="{{ f.thumb }}?w=1280" data-full="{{ f.url }}" {% if loop.first %}aria-pressed="true"{% endif %} title="{{ f.label }}">
+          <img src="{{ f.thumb }}?w=320" alt="{{ f.label }}" loading="lazy">
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="gallery-empty"><span class="placeholder">{{ t.brand[:1] }}</span><p class="muted">No photo yet. Add <code>photo.jpg</code> to <code>tools/{{ t.slug }}/</code>.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="hero-info">
+    <span class="chip">{{ t.category }}</span>
+    <h1>{{ t.model_name }}</h1>
+    {% if t.subtitle %}<p class="lead">{{ t.subtitle }}</p>{% endif %}
+
+    <div class="quick">
+      {% for m in t.manuals %}
+      <a class="btn btn-primary" href="/view/{{ m.path|q }}">📘 {{ 'Manual' if loop.length == 1 else m.label }}</a>
+      {% endfor %}
+      {% if t.consumables %}<a class="btn" href="#consumables">🛒 Consumables ({{ t.consumables|length }})</a>{% endif %}
+      {% if t.proofs %}<a class="btn" href="#purchase">🧾 Receipt</a>{% endif %}
+      {% if github_repo %}<a class="btn btn-ghost" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener">✎ Edit</a>{% endif %}
+    </div>
+
+    <dl class="kv kv-compact">
+      {% if t.model_no %}<dt>Model #</dt><dd>{{ t.model_no }}</dd>{% endif %}
+      {% if t.serial %}<dt>Serial #</dt><dd>{{ t.serial|truncate(80) }}</dd>{% endif %}
+      {% if t.value_text %}<dt>Replacement</dt><dd>{{ t.value_text }}</dd>{% endif %}
+      {% if t.paid_text %}<dt>Paid</dt><dd>{{ t.paid_text }}</dd>{% endif %}
+    </dl>
+  </div>
+</div>
+
+<section class="panel" id="specs">
+  <h2>Specifications</h2>
+  <dl class="kv">
+    {% for label, html in t.specs %}<dt>{{ label }}</dt><dd>{{ html|safe }}</dd>{% endfor %}
+  </dl>
+</section>
+
+<section class="panel" id="purchase">
+  <h2>Purchase &amp; insurance</h2>
+  <dl class="kv">
+    {% if t.purchased_html %}<dt>Purchased</dt><dd>{{ t.purchased_html|safe }}</dd>{% endif %}
+    {% if t.paid_text %}<dt>Paid</dt><dd>{{ t.paid_text }}</dd>{% endif %}
+    {% if t.replacement_html %}<dt>Replacement value</dt><dd>{{ t.replacement_html|safe }}</dd>{% endif %}
+  </dl>
+  <h3>Proof of purchase</h3>
+  {{ file_list(t.proofs, "None on file. Add a scan or photo named like receipt.pdf or receipt-2026-10-09.jpg to tools/" ~ t.slug ~ "/.") }}
+</section>
+
+{% if t.consumables %}
+<section class="panel" id="consumables">
+  <h2>Consumables &amp; parts</h2>
+  <div class="cons-list">
+    {% for c in t.consumables %}
+    <article class="cons">
+      <div class="cons-main">
+        <h3>{{ c.item_html|safe }}</h3>
+        <p>{{ c.spec_html|safe }}</p>
+        <p class="muted small">Where: {{ c.where_html|safe }}{% if c.price %} · <strong>{{ c.price_html|safe }}</strong>{% endif %}</p>
+      </div>
+      {{ buy(c) }}
+    </article>
+    {% endfor %}
+  </div>
+  {% if t.consumables_notes_html %}<div class="prose">{{ t.consumables_notes_html|safe }}</div>{% endif %}
+</section>
+{% endif %}
+
+<section class="panel" id="documents">
+  <h2>Manuals &amp; documents</h2>
+  {{ file_list(t.manuals + t.documents + t.other_files, "No documents yet.") }}
+</section>
+
+{% for title, html in t.sections_html %}
+<section class="panel prose" id="{{ title|lower|replace(' & ','-')|replace(' ','-') }}">
+  <h2>{{ title }}</h2>
+  {{ html|safe }}
+</section>
+{% endfor %}
+
+{% if t.projects %}
+<section class="panel">
+  <h2>Used in projects</h2>
+  {% for slug, title in t.projects %}<a class="row-link" href="/projects/{{ slug }}">{{ title }}</a>{% endfor %}
+</section>
+{% endif %}
+
+<dialog class="lightbox" data-lightbox><form method="dialog"><button aria-label="Close">×</button></form><img alt=""></dialog>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Insurance · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h1>Insurance inventory</h1>
+  <div class="actions">
+    <a class="btn" href="/insurance.csv">Download CSV</a>
+    <button class="btn btn-primary" type="button" onclick="print()">Print / PDF</button>
+  </div>
+</div>
+<p class="muted">Replacement values are the MSRP of a comparable new tool{% if inv.refreshed %}, last refreshed {{ inv.refreshed }}{% endif %}. Values are refreshed each quarter (January, April, July, October).</p>
+
+<section class="stats">
+  <div class="stat"><strong>{{ inv.tools|length }}</strong><span>Items</span></div>
+  <div class="stat"><strong>{{ inv.total_value_text.split(' (')[0] if inv.total_value_text else money(inv.total_value) }}</strong><span>Total replacement value</span></div>
+  <div class="stat"><strong>{{ money(inv.total_paid) }}</strong><span>Known amount paid</span></div>
+  <div class="stat {% if missing %}stat-warn{% endif %}"><strong>{{ inv.tools|length - missing|length }} / {{ inv.tools|length }}</strong><span>With proof of purchase</span></div>
+</section>
+
+<div class="table-wrap">
+<table class="inv">
+  <thead><tr><th></th><th>Item</th><th>Model / serial</th><th>Purchased</th><th class="num">Paid</th><th class="num">Replacement</th><th>Receipt</th></tr></thead>
+  <tbody>
+  {% for t in inv.tools %}
+  <tr>
+    <td class="inv-img">{% if t.cover %}<img src="{{ t.cover.thumb }}?w=320" alt="" loading="lazy">{% endif %}</td>
+    <td><a href="{{ t.url }}"><strong>{{ t.model_name }}</strong></a><br><span class="muted small">{{ t.subtitle }} · {{ t.category }}</span></td>
+    <td class="small">{{ t.model_no|truncate(40) }}<br><span class="muted">{{ t.serial|truncate(40) or '—' }}</span></td>
+    <td class="small">{{ t.spec_text.get('purchased','')|truncate(70) or '—' }}</td>
+    <td class="num">{{ t.paid_text or '—' }}</td>
+    <td class="num"><strong>{{ t.value_text or '—' }}</strong></td>
+    <td>{% if t.proofs %}{% for f in t.proofs %}<a href="/view/{{ f.path|q }}">🧾 {{ f.label }}</a>{% endfor %}{% else %}<span class="muted">none</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td></td><td colspan="4"><strong>Total</strong></td><td class="num"><strong>{{ inv.total_value_text or money(inv.total_value) }}</strong></td><td></td></tr></tfoot>
+</table>
+</div>
+
+{% if missing %}
+<section class="panel noprint">
+  <h2>Missing proof of purchase</h2>
+  <p class="muted">Add a receipt, invoice or auction confirmation to the tool's folder with a name starting <code>receipt</code> (e.g. <code>receipt.pdf</code>, <code>receipt-2026-10-09.jpg</code>). For tools bought used or received free, a photo of the listing or a short note works too.</p>
+  <p>{% for t in missing %}<a class="chip" href="{{ t.url }}#purchase">{{ t.model_name }}</a> {% endfor %}</p>
+</section>
+{% endif %}
+{% endblock %}

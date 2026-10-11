@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="project-layout">
+  <article class="panel prose">
+    <h1>{{ page.title }}</h1>
+    {{ page.html|safe }}
+  </article>
+  <aside class="panel">
+    <h2>Reference</h2>
+    {% for r in inv.references %}
+    <a class="row-link" href="{{ r.url if r.slug != 'index' else '/reference' }}" {% if r.slug == page.slug %}aria-current="page"{% endif %}>{{ r.title }}</a>
+    {% endfor %}
+    <a class="row-link" href="/consumables">Shopping list (interactive)</a>
+  </aside>
+</div>
+{% endblock %}

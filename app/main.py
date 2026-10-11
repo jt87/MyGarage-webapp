@@ -1,0 +1,370 @@
+"""Garage web app: browse tools, manuals, consumables, projects and receipts."""
+
+from __future__ import annotations
+
+import contextlib
+import csv
+import hashlib
+import hmac
+import io
+import logging
+import mimetypes
+import os
+import secrets
+import time
+from pathlib import Path
+from urllib.parse import quote
+
+import anyio
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
+                                 RedirectResponse, Response)
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
+
+from . import repo
+from .sync import RepoSync, Watcher
+
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+HERE = Path(__file__).parent
+REPO_PATH = Path(os.environ.get("REPO_PATH", "/data/repo")).resolve()
+CACHE_PATH = Path(os.environ.get("CACHE_PATH", "/data/cache")).resolve()
+SITE_TITLE = os.environ.get("SITE_TITLE", "Garage")
+AUTH_USER = os.environ.get("AUTH_USERNAME", "")
+AUTH_PASS = os.environ.get("AUTH_PASSWORD", "")
+SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # "owner/name", for "Edit on GitHub" links
+
+sync = RepoSync(
+    REPO_PATH,
+    url=os.environ.get("GIT_REPO_URL", ""),
+    branch=os.environ.get("GIT_BRANCH", "main"),
+    token=os.environ.get("GIT_TOKEN", ""),
+    interval=int(os.environ.get("SYNC_INTERVAL", "300")),
+)
+inventory = Watcher(sync, lambda: repo.load(REPO_PATH))
+
+env = Environment(loader=FileSystemLoader(HERE / "templates"),
+                  autoescape=select_autoescape(["html"]))
+env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
+                   github_repo=GITHUB_REPO, branch=sync.branch, auth_enabled=bool(AUTH_PASS))
+env.filters["q"] = lambda s: quote(str(s))
+
+
+def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLResponse:
+    ctx.setdefault("inv", inventory.get())
+    ctx["request"] = request
+    ctx["path"] = request.url.path
+    return HTMLResponse(env.get_template(template).render(**ctx), status_code=status)
+
+
+# --------------------------------------------------------------------------- pages
+
+async def home(request: Request):
+    inv = inventory.get()
+    active = [p for p in inv.projects if p.status.lower() not in ("done", "finished")]
+    return render(request, "home.html", active=active, recent=inv.log[:8])
+
+
+async def tools(request: Request):
+    inv = inventory.get()
+    cat = request.query_params.get("category", "")
+    items = [t for t in inv.tools if not cat or t.category == cat]
+    sort = request.query_params.get("sort", "name")
+    if sort == "value":
+        items.sort(key=lambda t: -(t.value or 0))
+    elif sort == "category":
+        items.sort(key=lambda t: (t.category, t.title))
+    else:
+        items.sort(key=lambda t: t.title.lower())
+    return render(request, "tools.html", items=items, category=cat, sort=sort)
+
+
+async def tool(request: Request):
+    inv = inventory.get()
+    t = inv.tool(request.path_params["slug"])
+    if not t:
+        raise HTTPException(404)
+    return render(request, "tool.html", t=t)
+
+
+async def consumables(request: Request):
+    inv = inventory.get()
+    groups: dict[str, list] = {}
+    for c in inv.consumables:
+        groups.setdefault(c.tool_slug, []).append(c)
+    return render(request, "consumables.html",
+                  groups=[(inv.tool(s), cs) for s, cs in groups.items()])
+
+
+async def projects(request: Request):
+    return render(request, "projects.html")
+
+
+async def project(request: Request):
+    inv = inventory.get()
+    p = inv.project(request.path_params["slug"])
+    if not p:
+        raise HTTPException(404)
+    return render(request, "project.html", p=p,
+                  used=[inv.tool(s) for s in p.tools if inv.tool(s)])
+
+
+async def reference(request: Request):
+    inv = inventory.get()
+    slug = request.path_params.get("slug", "index")
+    page = inv.reference(slug)
+    if not page:
+        raise HTTPException(404)
+    return render(request, "reference.html", page=page)
+
+
+async def insurance(request: Request):
+    inv = inventory.get()
+    missing = [t for t in inv.tools if not t.proofs]
+    return render(request, "insurance.html", missing=missing)
+
+
+async def insurance_csv(request: Request):
+    inv = inventory.get()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Tool", "Category", "Model #", "Serial #", "Purchased", "Paid",
+                "Replacement value", "Replacement value details", "Proof of purchase", "Link"])
+    base = str(request.base_url).rstrip("/")
+    for t in inv.tools:
+        w.writerow([t.title, t.category, t.model_no, t.serial, t.spec_text.get("purchased", ""),
+                    t.paid_text, t.value_text, t.spec_text.get("replacement value", ""),
+                    "; ".join(f.name for f in t.proofs) or "none", base + t.url])
+    w.writerow(["Total", "", "", "", "", "", inv.total_value_text or repo.fmt_money(inv.total_value)])
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="garage-inventory.csv"'})
+
+
+async def search(request: Request):
+    q = request.query_params.get("q", "").strip()
+    hits = repo.search(inventory.get(), q) if q else []
+    return render(request, "search.html", q=q, hits=hits)
+
+
+async def viewer(request: Request):
+    """PDF / STL / image viewer page with download + back links."""
+    rel = request.path_params["path"]
+    full = safe_path(rel)
+    owner = owner_link(rel)
+    ext = full.suffix.lower()
+    kind = "pdf" if ext == ".pdf" else "model" if ext == ".stl" else \
+        "image" if ext in repo.IMAGE_EXT else "other"
+    return render(request, "viewer.html", rel=rel, name=full.name, kind=kind,
+                  url="/files/" + quote(rel), owner=owner)
+
+
+# --------------------------------------------------------------------------- files
+
+def safe_path(rel: str) -> Path:
+    if not rel or rel.split("/", 1)[0] not in repo.SERVED_DIRS:
+        raise HTTPException(404)
+    full = (REPO_PATH / rel).resolve()
+    if REPO_PATH not in full.parents or not full.is_file() or ".git" in full.parts:
+        raise HTTPException(404)
+    return full
+
+
+def owner_link(rel: str) -> tuple[str, str] | None:
+    segs = rel.split("/")
+    inv = inventory.get()
+    if len(segs) >= 3 and segs[0] == "tools" and (t := inv.tool(segs[1])):
+        return t.url, t.title
+    if len(segs) >= 3 and segs[0] == "projects" and (p := inv.project(segs[1])):
+        return p.url, p.title
+    return None
+
+
+async def files(request: Request):
+    full = safe_path(request.path_params["path"])
+    media = mimetypes.guess_type(full.name)[0] or "application/octet-stream"
+    inline = media.startswith("image/") or media in ("application/pdf", "text/plain")
+    disp = "inline" if inline and "download" not in request.query_params else "attachment"
+    return FileResponse(full, media_type=media,
+                        headers={"Content-Disposition": f"{disp}; filename=\"{full.name}\"",
+                                 "Cache-Control": "private, max-age=300"})
+
+
+THUMB_WIDTHS = (320, 640, 1280)
+
+
+async def thumb(request: Request):
+    full = safe_path(request.path_params["path"])
+    if full.suffix.lower() not in repo.IMAGE_EXT:
+        raise HTTPException(404)
+    try:
+        w = int(request.query_params.get("w", "640"))
+    except ValueError:
+        w = 640
+    w = min(THUMB_WIDTHS, key=lambda x: abs(x - w))
+    st = full.stat()
+    key = hashlib.sha1(f"{full}:{st.st_mtime_ns}:{st.st_size}:{w}".encode()).hexdigest()
+    out = CACHE_PATH / "thumbs" / key[:2] / f"{key}.jpg"
+    if not out.exists():
+        from PIL import Image, ImageOps
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with Image.open(full) as im:
+                im = ImageOps.exif_transpose(im)
+                im.thumbnail((w, w * 2))
+                tmp = out.with_suffix(".tmp")
+                im.convert("RGB").save(tmp, "JPEG", quality=82, optimize=True, progressive=True)
+                tmp.replace(out)
+        except OSError:
+            return FileResponse(full)
+    return FileResponse(out, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=86400"})
+
+
+# --------------------------------------------------------------------------- admin
+
+async def do_sync(request: Request):
+    if sync.git_mode:
+        sync.sync_once()
+    inventory.invalidate()
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse(status())
+    return RedirectResponse(request.headers.get("referer", "/"), status_code=303)
+
+
+def status() -> dict:
+    return {
+        "mode": "git" if sync.git_mode else "mounted",
+        "head": sync.head[:7],
+        "last_sync": sync.last_ok.isoformat() if sync.last_ok else None,
+        "error": sync.last_error or None,
+        "tools": len(inventory.get().tools),
+    }
+
+
+async def healthz(request: Request):
+    ok = (REPO_PATH / "README.md").exists()
+    return JSONResponse({"ok": ok, **status()}, status_code=200 if ok else 503)
+
+
+# --------------------------------------------------------------------------- auth
+
+_failures: dict[str, list[float]] = {}
+
+
+async def login(request: Request):
+    if not AUTH_PASS:
+        return RedirectResponse("/", status_code=303)
+    error = ""
+    nxt = request.query_params.get("next", "/")
+    if not nxt.startswith("/") or nxt.startswith("//"):
+        nxt = "/"
+    if request.method == "POST":
+        ip = request.client.host if request.client else "?"
+        recent = [t for t in _failures.get(ip, []) if time.time() - t < 900]
+        form = await request.form()
+        user_ok = hmac.compare_digest(str(form.get("username", "")), AUTH_USER)
+        pass_ok = hmac.compare_digest(str(form.get("password", "")), AUTH_PASS)
+        if len(recent) >= 10:
+            error = "Too many attempts. Try again in 15 minutes."
+        elif user_ok and pass_ok:
+            request.session["user"] = AUTH_USER
+            _failures.pop(ip, None)
+            return RedirectResponse(nxt, status_code=303)
+        else:
+            recent.append(time.time())
+            _failures[ip] = recent
+            error = "Wrong username or password."
+    html = env.get_template("login.html").render(error=error, next=nxt, request=request)
+    return HTMLResponse(html, status_code=401 if error else 200)
+
+
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
+OPEN_PATHS = ("/login", "/static/", "/healthz", "/manifest.webmanifest")
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if AUTH_PASS and not request.url.path.startswith(OPEN_PATHS):
+            if request.session.get("user") != AUTH_USER:
+                return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
+        resp = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "same-origin")
+        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        return resp
+
+
+async def manifest(request: Request):
+    return JSONResponse({
+        "name": SITE_TITLE, "short_name": SITE_TITLE, "start_url": "/", "display": "standalone",
+        "background_color": "#1b1d21", "theme_color": "#e8590c",
+        "icons": [{"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}],
+    }, media_type="application/manifest+json")
+
+
+async def not_found(request: Request, exc: HTTPException):
+    if exc.status_code == 404:
+        try:
+            return render(request, "404.html", status=404)
+        except Exception:
+            pass
+    return PlainTextResponse(str(exc.detail), status_code=exc.status_code)
+
+
+routes = [
+    Route("/", home),
+    Route("/tools", tools),
+    Route("/tools/{slug}", tool),
+    Route("/consumables", consumables),
+    Route("/projects", projects),
+    Route("/projects/{slug}", project),
+    Route("/reference", reference),
+    Route("/reference/{slug}", reference),
+    Route("/insurance", insurance),
+    Route("/insurance.csv", insurance_csv),
+    Route("/search", search),
+    Route("/view/{path:path}", viewer),
+    Route("/files/{path:path}", files),
+    Route("/thumb/{path:path}", thumb),
+    Route("/sync", do_sync, methods=["POST"]),
+    Route("/healthz", healthz),
+    Route("/login", login, methods=["GET", "POST"]),
+    Route("/logout", logout, methods=["POST"]),
+    Route("/manifest.webmanifest", manifest),
+    Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
+]
+
+middleware = [
+    Middleware(GZipMiddleware, minimum_size=1024),
+    Middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="garage_session",
+               max_age=60 * 60 * 24 * 30, same_site="lax", https_only=COOKIE_SECURE),
+    Middleware(AuthMiddleware),
+]
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    CACHE_PATH.mkdir(parents=True, exist_ok=True)
+    if sync.git_mode:
+        await anyio.to_thread.run_sync(sync.sync_once)  # first clone before serving
+        sync.start(inventory.invalidate)
+    yield
+
+
+app = Starlette(routes=routes, middleware=middleware, lifespan=lifespan,
+                exception_handlers={HTTPException: not_found})

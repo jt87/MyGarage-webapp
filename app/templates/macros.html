@@ -1,0 +1,49 @@
+{% macro tool_card(t) -%}
+<a class="card tool-card" href="{{ t.url }}">
+  <div class="thumb">
+    {% if t.cover %}<img src="{{ t.cover.thumb }}?w=640" alt="" loading="lazy">
+    {% else %}<span class="placeholder">{{ t.brand[:1] }}</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <span class="chip">{{ t.category }}</span>
+    <h3>{{ t.model_name }}</h3>
+    <p class="muted">{{ t.subtitle }}</p>
+    <p class="meta">
+      {% if t.value_text %}<span title="Replacement value (MSRP)">{{ t.value_text }}</span>{% endif %}
+      {% if t.manuals %}<span>📘 Manual</span>{% endif %}
+      {% if t.proofs %}<span>🧾 Receipt</span>{% endif %}
+    </p>
+  </div>
+</a>
+{%- endmacro %}
+
+{% macro file_list(files, empty="") -%}
+{% if files %}
+<ul class="files">
+  {% for f in files %}
+  <li>
+    <a href="{{ '/view/' ~ (f.path|q) if f.kind in ('pdf','model','image') else f.url }}">
+      <span class="ficon ficon-{{ f.kind }}">{{ f.ext|upper }}</span>
+      <span class="fname">{{ f.label }}<small>{{ f.name }} · {{ f.human_size }}</small></span>
+    </a>
+    <a class="icon-btn" href="{{ f.url }}?download" title="Download {{ f.name }}" aria-label="Download {{ f.name }}">⤓</a>
+  </li>
+  {% endfor %}
+</ul>
+{% elif empty %}<p class="muted">{{ empty }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro buy(c) -%}
+<div class="buy">
+  {% for l in c.links %}<a class="btn btn-sm {% if loop.first %}btn-primary{% endif %}" href="{{ l.url }}" target="_blank" rel="noopener noreferrer">{{ l.label }}</a>{% endfor %}
+</div>
+{% if c.part_links %}
+<details class="more-parts"><summary>Other part numbers ({{ c.part_links|length }})</summary>
+  {% for part, links in c.part_links %}
+  <div class="part-row"><code>{{ part }}</code>
+    {% for l in links %}<a href="{{ l.url }}" target="_blank" rel="noopener noreferrer">{{ l.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endfor %}
+</details>
+{% endif %}
+{%- endmacro %}

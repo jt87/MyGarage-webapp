@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Projects · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>Projects</h1>
+<div class="grid">
+  {% for p in inv.projects %}
+  <a class="card project-card" href="{{ p.url }}">
+    <div class="card-body">
+      <span class="chip chip-{{ p.status|lower|replace(' ','-') }}">{{ p.status }}</span>
+      <h3>{{ p.title }}</h3>
+      <p class="muted">{{ p.goal|truncate(180) }}</p>
+      <p class="meta">
+        <span>{{ p.slug[:7] }}</span>
+        <span>{{ p.files|length }} file{{ '' if p.files|length == 1 else 's' }}</span>
+        {% if p.tools %}<span>{{ p.tools|length }} tool{{ '' if p.tools|length == 1 else 's' }}</span>{% endif %}
+      </p>
+    </div>
+  </a>
+  {% else %}<p class="muted">No projects yet.</p>{% endfor %}
+</div>
+{% endblock %}

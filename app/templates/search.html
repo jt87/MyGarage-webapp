@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Search · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>Search</h1>
+<form action="/search" class="big-search"><input type="search" name="q" value="{{ q }}" placeholder="Search…" autofocus aria-label="Search"></form>
+{% if q %}
+<p class="muted">{{ hits|length }} result{{ '' if hits|length == 1 else 's' }} for “{{ q }}”</p>
+{% for h in hits %}
+<a class="row-link hit" href="{{ h.url }}">
+  <span class="chip">{{ h.kind }}</span>
+  <span><strong>{{ h.title }}</strong><br><span class="muted small">{{ h.snippet }}</span></span>
+</a>
+{% endfor %}
+{% endif %}
+{% endblock %}

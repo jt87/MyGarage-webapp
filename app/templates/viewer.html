@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="section-head viewer-head">
+  <nav class="crumbs">{% if owner %}<a href="{{ owner[0] }}">← {{ owner[1] }}</a>{% endif %}</nav>
+  <div class="actions">
+    <a class="btn" href="{{ url }}" target="_blank" rel="noopener">Open full screen</a>
+    <a class="btn btn-primary" href="{{ url }}?download">Download</a>
+  </div>
+</div>
+<h1 class="viewer-title">{{ name }}</h1>
+{% if kind == "pdf" %}
+  <iframe class="viewer pdf" src="{{ url }}#view=FitH" title="{{ name }}"></iframe>
+  <p class="muted small">PDF not showing? Use “Open full screen”.</p>
+{% elif kind == "image" %}
+  <a href="{{ url }}"><img class="viewer-img" src="{{ url }}" alt="{{ name }}"></a>
+{% elif kind == "model" %}
+  <div class="viewer model" id="stl" data-src="{{ url }}"><p class="muted">Loading 3D model…</p></div>
+  <p class="muted small">Drag to rotate, scroll or pinch to zoom.</p>
+{% else %}
+  <p>This file type can't be previewed. <a href="{{ url }}?download">Download {{ name }}</a>.</p>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if kind == "model" %}
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="/static/stl.js"></script>
+{% endif %}
+{% endblock %}

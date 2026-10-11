@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "macros.html" import tool_card %}
+{% block content %}
+<section class="stats">
+  <a class="stat" href="/tools"><strong>{{ inv.tools|length }}</strong><span>Tools</span></a>
+  <a class="stat" href="/insurance"><strong>{{ inv.total_value_text.split(' (')[0] if inv.total_value_text else money(inv.total_value) }}</strong><span>Replacement value{% if inv.refreshed %} · {{ inv.refreshed }}{% endif %}</span></a>
+  <a class="stat" href="/consumables"><strong>{{ inv.consumables|length }}</strong><span>Consumables tracked</span></a>
+  <a class="stat" href="/projects"><strong>{{ active|length }}</strong><span>Active projects</span></a>
+</section>
+
+<section>
+  <div class="section-head"><h2>Tools</h2><a href="/tools">All tools →</a></div>
+  <div class="grid">
+    {% for t in inv.tools %}{{ tool_card(t) }}{% endfor %}
+  </div>
+</section>
+
+<div class="two-col">
+  <section>
+    <div class="section-head"><h2>Projects</h2><a href="/projects">All →</a></div>
+    {% for p in active %}
+    <a class="row-link" href="{{ p.url }}">
+      <span class="chip chip-{{ p.status|lower|replace(' ','-') }}">{{ p.status }}</span>
+      <strong>{{ p.title }}</strong>
+    </a>
+    {% else %}<p class="muted">No active projects.</p>{% endfor %}
+  </section>
+  <section>
+    <div class="section-head"><h2>Recent maintenance</h2></div>
+    {% for e in recent %}
+    <a class="row-link" href="/tools/{{ e.slug }}#maintenance-log">
+      <span class="date">{{ e.date }}</span>
+      <span><strong>{{ e.title }}</strong><br><span class="muted">{{ e.what|truncate(120) }}</span></span>
+    </a>
+    {% else %}<p class="muted">Nothing logged yet.</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}
