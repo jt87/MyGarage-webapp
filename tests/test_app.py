@@ -1,12 +1,17 @@
-"""Smoke tests against the real repo content (REPO_PATH=..)."""
+"""Smoke tests against a small made-up garage repo (see fixture.py)."""
 
 import os
+import sys
+import tempfile
 import time
 from pathlib import Path
 
-os.environ.setdefault("REPO_PATH", str(Path(__file__).resolve().parents[2]))
-os.environ.setdefault("CACHE_PATH", "/tmp/garage-test-cache")
-import tempfile  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent))
+import fixture  # noqa: E402
+
+_tmp = Path(tempfile.mkdtemp())
+os.environ["REPO_PATH"] = str(fixture.build(_tmp / "repo"))
+os.environ["CACHE_PATH"] = str(_tmp / "cache")
 
 os.environ["CONFIG_PATH"] = os.path.join(tempfile.mkdtemp(), "auth.json")
 
@@ -16,7 +21,7 @@ from app import auth, main, repo  # noqa: E402
 from app.main import app  # noqa: E402
 
 ROOT = Path(os.environ["REPO_PATH"])
-USER, PASSWORD = "alex", "correct horse battery"
+USER, PASSWORD = "admin", "correct horse battery"
 main.auth_cfg.set_credentials(USER, PASSWORD)
 client = TestClient(app)  # an internet client: its address isn't local
 client.post("/login", data={"username": USER, "password": PASSWORD, "remember": "on"})
@@ -46,12 +51,12 @@ def test_files_cannot_escape_repo():
 
 
 def test_relative_links_rewrite():
-    assert repo.rewrite_href("../acme-tester/", "tools/acme-meter", ROOT) == "/tools/acme-tester"
-    assert repo.rewrite_href("../../tools/acme-dd20/", "projects/x", ROOT) == "/tools/acme-dd20"
+    assert repo.rewrite_href("../acme-dd20/", "tools/acme-ts10", ROOT) == "/tools/acme-dd20"
+    assert repo.rewrite_href("../../tools/acme-ts10/", "projects/x", ROOT) == "/tools/acme-ts10"
     # Viewable files go to the in-app viewer; others download.
     assert repo.rewrite_href("manual.pdf", "tools/acme-ts10", ROOT) == "/view/tools/acme-ts10/manual.pdf"
-    assert repo.rewrite_href("panel.123dx", "projects/2026-01-sample-project", ROOT) == \
-        "/files/projects/2026-01-sample-project/panel.123dx"
+    assert repo.rewrite_href("design.f3d", "projects/2027-01-bookshelf", ROOT) == \
+        "/files/projects/2027-01-bookshelf/design.f3d"
     assert repo.rewrite_href("https://example.com", "tools/x", ROOT) == "https://example.com"
 
 
