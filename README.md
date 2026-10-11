@@ -1,8 +1,8 @@
 # MyGarage web app
 
-A read-only website for this repo: browse tools with photos and specs, open manuals and other documents, follow buy links for consumables, view proof of purchase, print an insurance inventory, and read project plans (including a 3D viewer for STL files).
+A self-hosted, read-only website for your garage: browse tools with photos and specs, open manuals and other documents, follow buy links for consumables, view proof of purchase, print an insurance inventory, and read project plans (including a 3D viewer for STL files).
 
-The repo stays the source of truth. The server keeps a clone of it on your TrueNAS as its cache and renders every page from that, so browsing never waits on GitHub and keeps working if GitHub is down.
+This repo is only the app. It contains no garage data. Your tools and projects live in a separate git repo of Markdown files and PDFs that you own (a **data repo**); start one from the sample at [jt87/MyGarage-dataset](https://github.com/jt87/MyGarage-dataset). That repo stays the source of truth. The server keeps a clone of it on your TrueNAS as its cache and renders every page from that, so browsing never waits on GitHub and keeps working if GitHub is down.
 
 ### How it stays current (and inside GitHub's free limits)
 
@@ -16,7 +16,7 @@ Updates reach the server three ways, cheapest first:
 
 That's at most about 340 tiny checks a day, plus one download per real change. GitHub doesn't publish a limit for git traffic like this, and its REST API allows 5,000 requests an hour, so this is a small fraction of anything GitHub would notice. A hard cap of 60 checks an hour backs it up, and the last check time is saved to disk so restarts don't cause a burst. The home screen shows how many checks ran today.
 
-GitHub Actions only runs when `webapp/` changes, never for tool or project edits. Pull requests run the tests (about 1 minute); merges build the image once (about 2 minutes, x86 only). That's a few minutes a month against the 2,000 free minutes for private repos. Make the image package **public** (step 1 below) so it doesn't count against the 500 MB private package storage limit.
+GitHub Actions runs in this app repo only, so editing tools and projects in your data repo never uses Actions minutes. Pull requests run the tests (about 1 minute); merges build the image once (about 2 minutes, x86 only). That's a few minutes a month against the 2,000 free minutes for private repos. Make the image package **public** (step 1 below) so it doesn't count against the 500 MB private package storage limit.
 
 ### Design
 
@@ -37,7 +37,7 @@ The interface follows Apple's Human Interface Guidelines so it looks like a stoc
 
 ### How the content is read
 
-The app follows the conventions in `CLAUDE.md`. It reads the inventory table in the main `README.md` for category, paid and replacement value, and each tool's `README.md` for the title (`# Brand Model — Name`), the spec table, and the `## Consumables & parts` and `## Maintenance log` tables. Other sections show up as written.
+The app reads the formats shown in [MyGarage-dataset](https://github.com/jt87/MyGarage-dataset), so copy that repo's layout and keep the formats. It reads the inventory table in the main `README.md` for category, paid and replacement value, and each tool's `README.md` for the title (`# Brand Model — Name`), the spec table, and the `## Consumables & parts` and `## Maintenance log` tables. Other sections show up as written.
 
 Files in a tool folder are sorted by name: images become the photo gallery (`photo.jpg` first, nameplates last), PDFs with "manual" or "guide" in the name are manuals, other PDFs are documents, and anything whose name starts with or contains **`receipt`**, `invoice`, `proof`, `order` or `bill-of-sale` is proof of purchase (kept out of the gallery).
 
@@ -47,12 +47,12 @@ In the consumables table, **bold** part numbers (e.g. `Delta **22-547**`) become
 
 You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docker.
 
-1. **Make the image pullable.** Merging this to `main` runs the GitHub Action that builds `ghcr.io/jt87/mygarage`. On GitHub, open your profile → Packages → `mygarage` → Package settings, and set visibility to **Public**. The image holds only the app code, never your garage data. (If you'd rather keep it private, add a GHCR registry credential in TrueNAS instead.)
-2. **Create a read-only GitHub token.** GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only `jt87/MyGarage`. Permissions: Contents → Read-only. Pick a long expiry and set a reminder; when it expires the site keeps showing the saved copy and the home screen says it can't reach GitHub.
+1. **Make the image pullable.** Merging this to `main` runs the GitHub Action that builds `ghcr.io/<owner>/mygarage` (for this repo, `ghcr.io/jt87/mygarage`). On GitHub, open your profile → Packages → `mygarage` → Package settings, and set visibility to **Public**. The image holds only the app code, never your garage data. (If you'd rather keep it private, add a GHCR registry credential in TrueNAS instead.)
+2. **Create a read-only GitHub token.** GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only your data repo. Skip this step if your data repo is public. Permissions: Contents → Read-only. Pick a long expiry and set a reminder; when it expires the site keeps showing the saved copy and the home screen says it can't reach GitHub.
 3. **Create a dataset** for the app's data, e.g. `tank/apps/mygarage`, and give the `apps` user (uid 568) full control of it. It holds a clone of the repo, a thumbnail cache and your login settings (`config/`). Only `config/` matters if you ever rebuild it.
 4. **Install.** Apps → Discover Apps → ⋮ (top right) → Install via YAML. Name it `mygarage` and paste [`deploy/truenas-compose.yaml`](deploy/truenas-compose.yaml), filling in each `CHANGE_ME`: the token, a webhook secret (run `openssl rand -hex 32` in a Mac Terminal) and the dataset path.
 5. **Create your login.** On your home Wi-Fi, open `http://<truenas-ip>:8088`. Like Sonarr and Radarr, there's no default login: the first screen asks you to create a username and password. For safety this screen only works from your home network, so nobody can claim the app if it's reachable from the internet before you've set it up.
-6. **Add the GitHub webhook** for instant updates, once the site is on your domain. On GitHub open the repo's Settings → Webhooks → Add webhook. Set the payload URL to `https://garage.example.com/webhook/github`, the content type to `application/json`, and the secret to the same value as `WEBHOOK_SECRET`. Choose "Just the push event". Webhooks are free and don't count against any limit. If GitHub can't reach your server (for example, it's only on Tailscale), skip this; changes then show up within 5 minutes of opening the site. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
+6. **Add the GitHub webhook** for instant updates, once the site is on your domain. On GitHub open your **data repo's** Settings → Webhooks → Add webhook. Set the payload URL to `https://garage.example.com/webhook/github`, the content type to `application/json`, and the secret to the same value as `WEBHOOK_SECRET`. Choose "Just the push event". Webhooks are free and don't count against any limit. If GitHub can't reach your server (for example, it's only on Tailscale), skip this; changes then show up within 5 minutes of opening the site. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
 
 To update the app later, open it in Apps and choose Update (or Pull Image, then restart) after a new image is built.
 
@@ -95,7 +95,7 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GIT_REPO_URL` | (none) | Repo to clone. Leave unset to read a folder mounted at `REPO_PATH` instead |
+| `GIT_REPO_URL` | (none) | Your data repo to clone. Leave unset to read a folder mounted at `REPO_PATH` instead |
 | `GIT_BRANCH` | `main` | Branch to follow |
 | `GIT_TOKEN` | (none) | GitHub token for a private repo; sent as a header, never written to disk |
 | `WEBHOOK_SECRET` | (none) | Enables `/webhook/github` for instant updates on push |
@@ -103,16 +103,16 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 | `SYNC_INTERVAL` | `1800` | Seconds between background checks (minimum 60). "Check for Updates" on the home screen checks right away |
 | `CONFIG_PATH` | `/data/config/auth.json` | Where the login settings are kept |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | (none) | Optional first login instead of the setup screen; ignored once one exists |
-| `GITHUB_REPO` | (none) | `owner/name`; shows "Edit" links to the README on GitHub |
+| `GITHUB_REPO` | (none) | Your data repo as `owner/name`; shows "Edit" links to the README on GitHub |
 | `SITE_TITLE` | `MyGarage` | App name: large title, first tab, Home Screen label |
 | `REPO_PATH` / `CACHE_PATH` | `/data/repo`, `/data/cache` | Where the clone and thumbnails live |
 
 ## Run it locally
 
 ```
-cd webapp
+git clone https://github.com/jt87/MyGarage-dataset.git ../MyGarage-dataset   # or your own data repo
 pip install -r requirements.txt
-REPO_PATH=.. CACHE_PATH=/tmp/garage-cache uvicorn app.main:app --reload
+REPO_PATH=../MyGarage-dataset CACHE_PATH=/tmp/garage-cache uvicorn app.main:app --reload
 ```
 
-Then open <http://localhost:8000>. Tests: `pip install pytest httpx && python -m pytest -q`.
+Then open <http://localhost:8000>. Tests: `pip install pytest httpx && python -m pytest -q`. They build a small made-up data repo in a temp folder (`tests/fixture.py`), so they need no real data.

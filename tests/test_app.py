@@ -1,12 +1,17 @@
-"""Smoke tests against the real repo content (REPO_PATH=..)."""
+"""Smoke tests against a small made-up garage repo (see fixture.py)."""
 
 import os
+import sys
+import tempfile
 import time
 from pathlib import Path
 
-os.environ.setdefault("REPO_PATH", str(Path(__file__).resolve().parents[2]))
-os.environ.setdefault("CACHE_PATH", "/tmp/garage-test-cache")
-import tempfile  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent))
+import fixture  # noqa: E402
+
+_tmp = Path(tempfile.mkdtemp())
+os.environ["REPO_PATH"] = str(fixture.build(_tmp / "repo"))
+os.environ["CACHE_PATH"] = str(_tmp / "cache")
 
 os.environ["CONFIG_PATH"] = os.path.join(tempfile.mkdtemp(), "auth.json")
 
@@ -16,7 +21,7 @@ from app import auth, main, repo  # noqa: E402
 from app.main import app  # noqa: E402
 
 ROOT = Path(os.environ["REPO_PATH"])
-USER, PASSWORD = "jared", "correct horse battery"
+USER, PASSWORD = "admin", "correct horse battery"
 main.auth_cfg.set_credentials(USER, PASSWORD)
 client = TestClient(app)  # an internet client: its address isn't local
 client.post("/login", data={"username": USER, "password": PASSWORD, "remember": "on"})
@@ -46,12 +51,12 @@ def test_files_cannot_escape_repo():
 
 
 def test_relative_links_rewrite():
-    assert repo.rewrite_href("../klein-ncvt-3p/", "tools/klein-mm320", ROOT) == "/tools/klein-ncvt-3p"
-    assert repo.rewrite_href("../../tools/ryobi-rts10g/", "projects/x", ROOT) == "/tools/ryobi-rts10g"
+    assert repo.rewrite_href("../acme-dd20/", "tools/acme-ts10", ROOT) == "/tools/acme-dd20"
+    assert repo.rewrite_href("../../tools/acme-ts10/", "projects/x", ROOT) == "/tools/acme-ts10"
     # Viewable files go to the in-app viewer; others download.
-    assert repo.rewrite_href("manual.pdf", "tools/delta-22-540", ROOT) == "/view/tools/delta-22-540/manual.pdf"
-    assert repo.rewrite_href("arcadeScreenPanel.123dx", "projects/2026-10-arcade-cabinet", ROOT) == \
-        "/files/projects/2026-10-arcade-cabinet/arcadeScreenPanel.123dx"
+    assert repo.rewrite_href("manual.pdf", "tools/acme-ts10", ROOT) == "/view/tools/acme-ts10/manual.pdf"
+    assert repo.rewrite_href("design.f3d", "projects/2027-01-bookshelf", ROOT) == \
+        "/files/projects/2027-01-bookshelf/design.f3d"
     assert repo.rewrite_href("https://example.com", "tools/x", ROOT) == "https://example.com"
 
 
@@ -119,11 +124,11 @@ def test_webhook_requires_signature(monkeypatch):
 
 
 def test_mobile_basics():
-    html = client.get("/tools/delta-22-540").text
+    html = client.get("/tools/acme-ts10").text
     assert "viewport-fit=cover" in html
     assert 'class="tabbar"' in html
     assert client.get("/more").status_code == 200
-    assert client.get("/view/tools/delta-22-540/manual.pdf").status_code == 200
+    assert client.get("/view/tools/acme-ts10/manual.pdf").status_code == 200
 
 
 def test_github_checks_are_capped_and_persisted(tmp_path, monkeypatch):
@@ -179,7 +184,7 @@ def test_password_is_hashed_not_stored():
 def test_pages_require_login():
     r = fresh().get("/tools", headers={"accept": "text/html"})
     assert r.status_code == 303 and r.headers["location"].startswith("/login?next=/tools")
-    assert fresh().get("/files/tools/delta-22-540/manual.pdf").status_code == 401
+    assert fresh().get("/files/tools/acme-ts10/manual.pdf").status_code == 401
     assert fresh().get("/static/style.css").status_code == 200
     assert fresh().get("/healthz").json() == {"ok": True}
 

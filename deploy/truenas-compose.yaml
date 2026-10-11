@@ -1,5 +1,5 @@
 # TrueNAS SCALE: Apps → Discover Apps → ⋮ → Install via YAML. Paste this,
-# then replace every CHANGE_ME. See webapp/README.md for the full walkthrough.
+# then replace every CHANGE_ME. See README.md for the full walkthrough.
 services:
   mygarage:
     image: ghcr.io/jt87/mygarage:latest
@@ -10,17 +10,17 @@ services:
       - "8088:8000"            # http://<truenas-ip>:8088 on your LAN
     environment:
       SITE_TITLE: MyGarage
-      # Content comes from this repo. The server keeps a clone in /data as its
+      # Content comes from your data repo (see jt87/MyGarage-dataset for the format). The server keeps a clone in /data as its
       # cache and serves every page from it. It asks GitHub for changes when a
       # push webhook arrives, or at most every FRESHNESS_SECONDS when someone
       # is using the site, or every SYNC_INTERVAL otherwise.
-      GIT_REPO_URL: https://github.com/jt87/MyGarage.git
+      GIT_REPO_URL: https://github.com/CHANGE_ME/CHANGE_ME.git   # your data repo
       GIT_BRANCH: main
-      GIT_TOKEN: CHANGE_ME       # fine-grained GitHub token: this repo only, Contents = Read-only
+      GIT_TOKEN: CHANGE_ME       # fine-grained GitHub token: your data repo only, Contents = Read-only (remove for a public repo)
       WEBHOOK_SECRET: CHANGE_ME  # same secret as the GitHub webhook (see README); instant updates
       FRESHNESS_SECONDS: "300"
       SYNC_INTERVAL: "1800"
-      GITHUB_REPO: jt87/MyGarage   # adds "Edit" links to GitHub; remove to hide them
+      GITHUB_REPO: CHANGE_ME/CHANGE_ME   # your data repo; adds "Edit" links to GitHub; remove to hide them
       # No login settings here: like Sonarr and Radarr, MyGarage asks you to
       # create a username and password the first time you open it, and keeps
       # them (hashed) in /data/config. Change them later in Settings.
