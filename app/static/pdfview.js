@@ -5,10 +5,10 @@
 // keeps long manuals inside iOS's canvas memory limit.
 (() => {
   const el = document.getElementById("pdf");
-  const bar = document.querySelector("[data-pdf-toolbar]");
+  const bar = document.querySelector("[data-pdf-hud]");
   if (!el) return;
   const fail = () => {
-    el.innerHTML = `<p>Couldn't display this PDF here. <a href="${el.dataset.src}" target="_blank" rel="noopener">Open it in Safari's viewer</a>.</p>`;
+    el.innerHTML = `<p class="pdf-loading">Couldn't display this PDF.<br><a href="${el.dataset.src}" target="_blank" rel="noopener">Open in Safari</a></p>`;
   };
   if (!window.pdfjsLib) return fail();
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -20,9 +20,9 @@
   let doc, ratio = 1.294; // height/width; updated from page 1
   const pages = [];
   const input = bar.querySelector("[data-page-input]");
-  const zoomLabel = bar.querySelector("[data-zoom-label]");
 
-  const fitWidth = () => el.clientWidth;
+  // Fit width, leaving a margin like Files/Books; capped for iPad and Mac.
+  const fitWidth = () => Math.min(el.clientWidth - 24, 900);
 
   function layout(p) {
     const w = fitWidth() * ZOOMS[zoom];
@@ -77,7 +77,6 @@
 
   function relayout() {
     pages.forEach((p) => { layout(p); p.renderedWidth = 0; });
-    zoomLabel.textContent = zoom === 0 ? "Fit" : Math.round(ZOOMS[zoom] * 100) + "%";
     // Re-render what's on screen now; the observer handles the rest.
     pages.forEach((p) => {
       const r = p.div.getBoundingClientRect();
@@ -122,7 +121,7 @@
   bar.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => {
     const d = +b.dataset.zoom;
     const keep = +input.value || 1;
-    zoom = d === 0 ? 0 : Math.max(0, Math.min(ZOOMS.length - 1, zoom + d));
+    zoom = Math.max(0, Math.min(ZOOMS.length - 1, zoom + d));
     relayout();
     goTo(keep);
   }));

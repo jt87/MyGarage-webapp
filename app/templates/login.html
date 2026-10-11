@@ -2,18 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · {{ site_title }}</title>
-<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign In · {{ site_title }}</title>
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{{ site_title }}">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body class="login-body">
-<form class="panel login" method="post" action="/login?next={{ next|q }}">
-  <h1><img src="/static/icon.svg" alt="" width="32" height="32"> {{ site_title }}</h1>
+<form class="login" method="post" action="/login?next={{ next|q }}">
+  <img class="app-icon" src="/static/apple-touch-icon.png" alt="">
+  <h1>{{ site_title }}</h1>
+  <p class="t-subhead secondary">Sign in to view your tools.</p>
+  <div class="group">
+    <label class="row"><span class="sr-only">Username</span><input name="username" placeholder="Username" autocomplete="username" autocapitalize="off" autocorrect="off" required autofocus></label>
+    <label class="row"><span class="sr-only">Password</span><input name="password" type="password" placeholder="Password" autocomplete="current-password" required></label>
+  </div>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-  <label>Username <input name="username" autocomplete="username" required autofocus></label>
-  <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
-  <button class="btn btn-primary">Sign in</button>
+  <button class="btn-filled">Sign In</button>
 </form>
 </body>
 </html>

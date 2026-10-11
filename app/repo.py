@@ -7,6 +7,7 @@ doesn't fit a known shape is still rendered as plain Markdown.
 
 from __future__ import annotations
 
+import json
 import posixpath
 import re
 from dataclasses import dataclass, field
@@ -349,6 +350,17 @@ class Consumable:
     links: list[BuyLink]
     part_links: list[tuple[str, list[BuyLink]]]
 
+    @property
+    def buy_json(self) -> str:
+        """Data for the "where to buy" action sheet."""
+        return json.dumps({
+            "title": self.item,
+            "message": self.spec[:140],
+            "links": [{"label": l.label, "url": l.url} for l in self.links],
+            "parts": self.parts,
+            "more": [{"part": p, "url": links[0].url} for p, links in self.part_links],
+        })
+
 
 @dataclass
 class LogEntry:
@@ -385,6 +397,7 @@ class Tool:
     consumables_notes_html: str
     sections_html: list[tuple[str, str]]
     log: list[LogEntry]
+    log_notes_html: str
     raw: str
     projects: list[tuple[str, str]] = field(default_factory=list)  # (slug, title)
 
@@ -452,6 +465,18 @@ class Inventory:
     total_value: float
     total_paid: float
     readme_html: str
+
+    @property
+    def total_display(self) -> str:
+        return (self.total_value_text.split(" (")[0] if self.total_value_text
+                else fmt_money(self.total_value))
+
+    @property
+    def tools_by_category(self) -> list[tuple[str, list[Tool]]]:
+        groups: dict[str, list[Tool]] = {}
+        for t in sorted(self.tools, key=lambda t: t.model_name.lower()):
+            groups.setdefault(t.category, []).append(t)
+        return sorted(groups.items())
 
     def tool(self, slug: str) -> Tool | None:
         return next((t for t in self.tools if t.slug == slug), None)
@@ -568,6 +593,7 @@ def load_tool(root: Path, slug: str, r: Renderer, inv_row: dict) -> Tool:
     cons_notes = ""
     sections_html: list[tuple[str, str]] = []
     log: list[LogEntry] = []
+    log_notes = ""
     for s in sections:
         st = s.title.lower()
         if st.startswith("consumables"):
@@ -598,13 +624,16 @@ def load_tool(root: Path, slug: str, r: Renderer, inv_row: dict) -> Tool:
             cons_notes = r.block(rest.strip(), rel) if rest.strip() else ""
             continue
         if st.startswith("maintenance"):
-            _, rows, _ = extract_table(s.body)
+            header, rows, rest = extract_table(s.body)
             for row in rows:
                 if len(row) >= 2 and row[0].strip():
                     log.append(
                         LogEntry(plain(row[0]), r.inline(row[1], rel), plain(row[1]),
                                  slug, name_part, "tool")
                     )
+            if header:  # shown as list rows; keep any text around the table
+                log_notes = r.block(rest.strip(), rel) if rest.strip() else ""
+                continue
         sections_html.append((s.title, r.block(s.body, rel)))
     if pre_rest.strip():
         sections_html.insert(0, ("Notes", r.block(pre_rest, rel)))
@@ -638,6 +667,7 @@ def load_tool(root: Path, slug: str, r: Renderer, inv_row: dict) -> Tool:
         consumables_notes_html=cons_notes,
         sections_html=sections_html,
         log=log,
+        log_notes_html=log_notes,
         raw=raw,
     )
 
@@ -757,6 +787,9 @@ def search(inv: Inventory, q: str, limit: int = 50) -> list[Hit]:
     )
     hits = []
     for kind, title, url, text in docs:
+        # Table pipes and separator dashes make unreadable snippets.
+        text = re.sub(r"\s*\|[\s|:-]*", " · ", text)
+        text = re.sub(r"(?:\s*·\s*){2,}", " · ", text).strip(" ·")
         low, tlow = text.lower(), title.lower()
         if not all(t in low or t in tlow for t in terms):
             continue

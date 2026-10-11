@@ -1,41 +1,31 @@
 {% extends "base.html" %}
-{% block title %}{{ name }} · {{ site_title }}{% endblock %}
+{% from "macros.html" import icon %}
+{% block nav_actions %}
+<button class="nav-btn" type="button" data-share-file="{{ url }}" data-name="{{ name }}" aria-label="Share">{{ icon("share") }}</button>
+{% endblock %}
 {% block content %}
-<div class="viewer-head">
-  {% if owner %}<a class="back" href="{{ owner[0] }}">‹ {{ owner[1].split(' — ')[0] }}</a>{% endif %}
-  <h1 class="viewer-title">{{ name }}</h1>
-  <div class="actions">
-    <a class="btn btn-sm" href="{{ url }}" target="_blank" rel="noopener">Open in Safari viewer</a>
-    <a class="btn btn-sm" href="{{ url }}?download">Download</a>
-  </div>
-</div>
 {% if kind == "pdf" %}
-  <div class="pdf-toolbar" data-pdf-toolbar hidden>
-    <label class="pdf-pageno">Page <input type="number" inputmode="numeric" min="1" value="1" data-page-input aria-label="Page number"> / <span data-page-count>…</span></label>
-    <span class="pdf-zoom">
-      <button class="btn btn-sm" type="button" data-zoom="-1" aria-label="Zoom out">−</button>
-      <button class="btn btn-sm" type="button" data-zoom="0" data-zoom-label>Fit</button>
-      <button class="btn btn-sm" type="button" data-zoom="1" aria-label="Zoom in">+</button>
-    </span>
-  </div>
-  <div class="pdf" id="pdf" data-src="{{ url }}">
-    <p class="muted pdf-loading">Loading {{ name }}…</p>
+  <div class="pdf" id="pdf" data-src="{{ url }}"><p class="pdf-loading">Loading…</p></div>
+  <div class="pdf-hud" data-pdf-hud hidden>
+    <button type="button" data-zoom="-1" aria-label="Zoom out">{{ icon("minus") }}</button>
+    <label><input type="number" inputmode="numeric" min="1" value="1" data-page-input aria-label="Page"> of <span data-page-count></span></label>
+    <button type="button" data-zoom="1" aria-label="Zoom in">{{ icon("plus") }}</button>
   </div>
 {% elif kind == "image" %}
-  <a href="{{ thumb }}&w=2048" target="_blank" rel="noopener"><img class="viewer-img" src="{{ thumb }}&w=2048" alt="{{ name }}"></a>
+  <img class="viewer-img" src="{{ thumb }}&w=2048" alt="{{ name }}">
 {% elif kind == "model" %}
-  <div class="viewer model" id="stl" data-src="{{ url }}"><p class="muted">Loading 3D model…</p></div>
-  <p class="muted small">Drag to rotate, pinch to zoom.</p>
+  <div class="model" id="stl" data-src="{{ url }}"><p class="secondary">Loading 3D model…</p></div>
+  <p class="section-footer" style="text-align:center">Drag to rotate. Pinch to zoom.</p>
 {% else %}
-  <p>This file type can't be previewed. <a href="{{ url }}?download">Download {{ name }}</a>.</p>
+  <div class="section"><div class="group"><a class="row action" href="{{ url }}?download"><span class="row-body">Download {{ name }}</span></a></div></div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
 {% if kind == "pdf" %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
-<script src="/static/pdfview.js?v=3" defer></script>
+<script src="/static/pdfview.js?v=4" defer></script>
 {% elif kind == "model" %}
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
-<script type="module" src="/static/stl.js"></script>
+<script type="module" src="/static/stl.js?v=4"></script>
 {% endif %}
 {% endblock %}

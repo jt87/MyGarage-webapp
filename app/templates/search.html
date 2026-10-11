@@ -1,15 +1,38 @@
 {% extends "base.html" %}
-{% block title %}Search · {{ site_title }}{% endblock %}
+{% from "macros.html" import icon %}
+{% set large = true %}
+{% set KIND = {"Tool": ("Tools", "wrench", "orange"), "Consumable": ("Parts", "cart", "blue"), "Project": ("Projects", "folder", "indigo"), "Reference": ("Reference", "book", "brown")} %}
 {% block content %}
-<h1>Search</h1>
-<form action="/search" class="big-search"><input type="search" name="q" value="{{ q }}" placeholder="Search…" autofocus aria-label="Search"></form>
+<div class="large-title"><h1>Search</h1></div>
+<form class="searchbar" action="/search" role="search">
+  <svg aria-hidden="true"><use href="/static/icons.svg#search"/></svg>
+  <input type="search" name="q" value="{{ q }}" placeholder="Tools, parts, manuals, projects" aria-label="Search" {% if not q %}autofocus{% endif %} enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
+</form>
 {% if q %}
-<p class="muted">{{ hits|length }} result{{ '' if hits|length == 1 else 's' }} for “{{ q }}”</p>
-{% for h in hits %}
-<a class="row-link hit" href="{{ h.url }}">
-  <span class="chip">{{ h.kind }}</span>
-  <span><strong>{{ h.title }}</strong><br><span class="muted small">{{ h.snippet }}</span></span>
-</a>
-{% endfor %}
+  {% for kind, hits in groups %}
+  <div class="section">
+    <div class="section-header">{{ KIND[kind][0] }}</div>
+    <div class="group">
+      {% for h in hits %}
+      <a class="row has-icon" href="{{ h.url }}">
+        <span class="tile" style="--tile: var(--{{ KIND[kind][2] }})">{{ icon(KIND[kind][1]) }}</span>
+        <span class="row-body"><span class="row-title clip">{{ h.title }}</span><span class="row-sub two">{{ h.snippet }}</span></span>
+        <span class="chev"></span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <p class="secondary" style="text-align:center;padding:40px 0">No results for “{{ q }}”</p>
+  {% endfor %}
+{% else %}
+<div class="section">
+  <div class="section-header">Suggestions</div>
+  <div class="group">
+    {% for s in ["manual", "blade", "belt", "battery", "serial"] %}
+    <a class="row" href="/search?q={{ s }}"><span class="row-body tint">{{ s|capitalize }}</span></a>
+    {% endfor %}
+  </div>
+</div>
 {% endif %}
 {% endblock %}

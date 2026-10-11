@@ -11,7 +11,9 @@ import logging
 import mimetypes
 import os
 import secrets
+import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -45,14 +47,16 @@ SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # "owner/name", for "Edit on GitHub" links
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
-FRESHNESS_SECONDS = float(os.environ.get("FRESHNESS_SECONDS", "10"))
+# How stale the cached clone may get before a page view asks GitHub (seconds).
+FRESHNESS_SECONDS = float(os.environ.get("FRESHNESS_SECONDS", "300"))
 
 sync = RepoSync(
     REPO_PATH,
     url=os.environ.get("GIT_REPO_URL", ""),
     branch=os.environ.get("GIT_BRANCH", "main"),
     token=os.environ.get("GIT_TOKEN", ""),
-    interval=int(os.environ.get("SYNC_INTERVAL", "60")),
+    interval=int(os.environ.get("SYNC_INTERVAL", "1800")),
+    state_file=CACHE_PATH / "sync-state.json",
 )
 inventory = Watcher(sync, lambda: repo.load(REPO_PATH))
 
@@ -63,10 +67,35 @@ env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
 env.filters["q"] = lambda s: quote(str(s))
 
 
+def ago(dt: datetime | None) -> str:
+    if not dt:
+        return "never"
+    secs = int((datetime.now(timezone.utc) - dt).total_seconds())
+    if secs < 60:
+        return "just now"
+    if secs < 3600:
+        return f"{secs // 60} min ago"
+    if secs < 86400:
+        return f"{secs // 3600} hr ago"
+    return dt.strftime("%b %-d")
+
+
+env.filters["ago"] = ago
+
+# Which tab a section belongs to (for the tab bar and sidebar highlight).
+TAB_FOR = {"": "garage", "tools": "tools", "consumables": "shopping", "projects": "projects",
+           "search": "search", "insurance": "garage", "reference": "garage"}
+
+
 def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLResponse:
+    """Render a screen. `back` = (url, label) for the nav bar's back button,
+    `title` = the inline nav bar title, `tab` = highlighted tab."""
     ctx.setdefault("inv", inventory.get())
     ctx["request"] = request
     ctx["path"] = request.url.path
+    ctx.setdefault("tab", TAB_FOR.get(request.url.path.split("/")[1], ""))
+    ctx.setdefault("back", None)
+    ctx.setdefault("title", "")
     return HTMLResponse(env.get_template(template).render(**ctx), status_code=status,
                         headers={"Cache-Control": "no-cache"})
 
@@ -76,21 +105,11 @@ def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLRes
 async def home(request: Request):
     inv = inventory.get()
     active = [p for p in inv.projects if p.status.lower() not in ("done", "finished")]
-    return render(request, "home.html", active=active, recent=inv.log[:8])
+    return render(request, "home.html", active=active, recent=inv.log[:5], title=SITE_TITLE)
 
 
 async def tools(request: Request):
-    inv = inventory.get()
-    cat = request.query_params.get("category", "")
-    items = [t for t in inv.tools if not cat or t.category == cat]
-    sort = request.query_params.get("sort", "name")
-    if sort == "value":
-        items.sort(key=lambda t: -(t.value or 0))
-    elif sort == "category":
-        items.sort(key=lambda t: (t.category, t.title))
-    else:
-        items.sort(key=lambda t: t.title.lower())
-    return render(request, "tools.html", items=items, category=cat, sort=sort)
+    return render(request, "tools.html", title="Tools")
 
 
 async def tool(request: Request):
@@ -98,7 +117,7 @@ async def tool(request: Request):
     t = inv.tool(request.path_params["slug"])
     if not t:
         raise HTTPException(404)
-    return render(request, "tool.html", t=t)
+    return render(request, "tool.html", t=t, back=("/tools", "Tools"), title=t.model_name)
 
 
 async def consumables(request: Request):
@@ -106,12 +125,12 @@ async def consumables(request: Request):
     groups: dict[str, list] = {}
     for c in inv.consumables:
         groups.setdefault(c.tool_slug, []).append(c)
-    return render(request, "consumables.html",
+    return render(request, "consumables.html", title="Shopping List",
                   groups=[(inv.tool(s), cs) for s, cs in groups.items()])
 
 
 async def projects(request: Request):
-    return render(request, "projects.html")
+    return render(request, "projects.html", title="Projects")
 
 
 async def project(request: Request):
@@ -119,7 +138,7 @@ async def project(request: Request):
     p = inv.project(request.path_params["slug"])
     if not p:
         raise HTTPException(404)
-    return render(request, "project.html", p=p,
+    return render(request, "project.html", p=p, back=("/projects", "Projects"), title=p.title,
                   used=[inv.tool(s) for s in p.tools if inv.tool(s)])
 
 
@@ -129,13 +148,16 @@ async def reference(request: Request):
     page = inv.reference(slug)
     if not page:
         raise HTTPException(404)
-    return render(request, "reference.html", page=page)
+    back = ("/", SITE_TITLE) if slug == "index" else ("/reference", "Reference")
+    return render(request, "reference.html", page=page, back=back, title=page.title)
 
 
 async def insurance(request: Request):
     inv = inventory.get()
     missing = [t for t in inv.tools if not t.proofs]
-    return render(request, "insurance.html", missing=missing)
+    return render(request, "insurance.html", missing=missing, back=("/", SITE_TITLE),
+                  items=sorted(inv.tools, key=lambda t: -(t.value or 0)),
+                  title="Insurance")
 
 
 async def insurance_csv(request: Request):
@@ -155,13 +177,18 @@ async def insurance_csv(request: Request):
 
 
 async def more(request: Request):
-    return render(request, "more.html")
+    return RedirectResponse("/", status_code=301)
 
 
 async def search(request: Request):
     q = request.query_params.get("q", "").strip()
     hits = repo.search(inventory.get(), q) if q else []
-    return render(request, "search.html", q=q, hits=hits)
+    groups: dict[str, list] = {}
+    for h in hits:
+        groups.setdefault(h.kind, []).append(h)
+    order = ["Tool", "Consumable", "Project", "Reference"]
+    return render(request, "search.html", q=q, hits=hits, title="Search",
+                  groups=sorted(groups.items(), key=lambda g: order.index(g[0])))
 
 
 async def viewer(request: Request):
@@ -172,8 +199,9 @@ async def viewer(request: Request):
     ext = full.suffix.lower()
     kind = "pdf" if ext == ".pdf" else "model" if ext == ".stl" else \
         "image" if ext in repo.IMAGE_EXT else "other"
+    tab = TAB_FOR.get(rel.split("/")[0], "")
     return render(request, "viewer.html", rel=rel, name=full.name, kind=kind,
-                  url="/files/" + quote(rel), owner=owner,
+                  url="/files/" + quote(rel), owner=owner, back=owner, title=full.name, tab=tab,
                   thumb=f"/thumb/{quote(rel)}?v={int(full.stat().st_mtime)}")
 
 
@@ -192,9 +220,11 @@ def owner_link(rel: str) -> tuple[str, str] | None:
     segs = rel.split("/")
     inv = inventory.get()
     if len(segs) >= 3 and segs[0] == "tools" and (t := inv.tool(segs[1])):
-        return t.url, t.title
+        return t.url, t.model_name
     if len(segs) >= 3 and segs[0] == "projects" and (p := inv.project(segs[1])):
         return p.url, p.title
+    if segs[0] == "reference":
+        return "/reference", "Reference"
     return None
 
 
@@ -249,8 +279,9 @@ async def thumb(request: Request):
 # --------------------------------------------------------------------------- admin
 
 async def do_sync(request: Request):
+    """"Check for Updates": asks GitHub, at most once per 15 seconds."""
     if sync.git_mode:
-        await anyio.to_thread.run_sync(sync.sync_once)
+        await anyio.to_thread.run_sync(sync.ensure_fresh, 15)
     inventory.invalidate()
     if "application/json" in request.headers.get("accept", ""):
         return JSONResponse(status())
@@ -261,7 +292,9 @@ def status() -> dict:
     return {
         "mode": "git" if sync.git_mode else "mounted",
         "head": sync.head[:7],
-        "last_sync": sync.last_ok.isoformat() if sync.last_ok else None,
+        "last_checked": sync.last_checked.isoformat() if sync.last_checked else None,
+        "checks_today": sync.checks_today,
+        "fetches_today": sync.fetches_today,
         "error": sync.last_error or None,
         "tools": len(inventory.get().tools),
     }
@@ -277,7 +310,12 @@ async def github_webhook(request: Request):
     if not hmac.compare_digest(sig, want):
         return PlainTextResponse("bad signature", status_code=401)
     if request.headers.get("x-github-event") == "push":
-        if await anyio.to_thread.run_sync(sync.sync_once):
+        try:
+            ref = json.loads(body or b"{}").get("ref", "")
+        except ValueError:
+            ref = ""
+        # Only pushes to the branch we serve cost a fetch.
+        if ref == f"refs/heads/{sync.branch}" and await anyio.to_thread.run_sync(sync.sync_once):
             inventory.invalidate()
     return PlainTextResponse("ok")
 
@@ -336,8 +374,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if request.session.get("user") != AUTH_USER:
                 return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
         if request.method == "GET" and not request.url.path.startswith(NO_FRESH_PATHS):
-            # Every page shows the latest commit on GitHub (checked at most
-            # every FRESHNESS_SECONDS; runs off the event loop).
+            # Pages come from the cached clone. If it hasn't been checked
+            # against GitHub for FRESHNESS_SECONDS, check once first (off the
+            # event loop). The webhook usually makes this a no-op.
             await anyio.to_thread.run_sync(sync.ensure_fresh, FRESHNESS_SECONDS)
         resp = await call_next(request)
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -349,8 +388,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 async def manifest(request: Request):
     return JSONResponse({
         "name": SITE_TITLE, "short_name": SITE_TITLE, "start_url": "/", "display": "standalone",
-        "background_color": "#f4f2ee", "theme_color": "#f4f2ee",
-        "icons": [{"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}],
+        "background_color": "#f2f2f7", "theme_color": "#f2f2f7",
+        "icons": [{"src": "/static/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"},
+                  {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"}],
     }, media_type="application/manifest+json")
 
 
@@ -410,7 +450,9 @@ middleware = [
 async def lifespan(app):
     CACHE_PATH.mkdir(parents=True, exist_ok=True)
     if sync.git_mode:
-        await anyio.to_thread.run_sync(sync.sync_once)  # first clone before serving
+        if not (REPO_PATH / ".git").exists():
+            await anyio.to_thread.run_sync(sync.sync_once)  # first clone before serving
+        # An existing clone is served right away; the loop checks GitHub when due.
         sync.start(inventory.invalidate)
     yield
 

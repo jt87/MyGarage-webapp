@@ -114,3 +114,39 @@ def test_mobile_basics():
     assert 'class="tabbar"' in html
     assert client.get("/more").status_code == 200
     assert client.get("/view/tools/acme-ts10/manual.pdf").status_code == 200
+
+
+def test_github_checks_are_capped_and_persisted(tmp_path, monkeypatch):
+    """Page views can't make the server hammer GitHub, even across restarts."""
+    from app import sync as sync_mod
+
+    calls = []
+    s = sync_mod.RepoSync(tmp_path / "clone", url="https://example.invalid/r.git",
+                          state_file=tmp_path / "state.json")
+    monkeypatch.setattr(s, "_git", lambda *a, **k: calls.append(a) or "")
+    for _ in range(sync_mod.MAX_CHECKS_PER_HOUR + 20):
+        s.ensure_fresh(0)
+    assert len(calls) == sync_mod.MAX_CHECKS_PER_HOUR
+    # Throttled by age: a fresh instance reads the saved check time.
+    s2 = sync_mod.RepoSync(tmp_path / "clone", url="https://example.invalid/r.git",
+                           state_file=tmp_path / "state.json")
+    monkeypatch.setattr(s2, "_git", lambda *a, **k: calls.append(a) or "")
+    s2.ensure_fresh(300)
+    assert len(calls) == sync_mod.MAX_CHECKS_PER_HOUR
+    assert s2.checks_today == sync_mod.MAX_CHECKS_PER_HOUR
+
+
+def test_webhook_ignores_other_branches(monkeypatch):
+    import hashlib
+    import hmac as _hmac
+
+    from app import main
+
+    monkeypatch.setattr(main, "WEBHOOK_SECRET", "s3cret")
+    fetched = []
+    monkeypatch.setattr(main.sync, "sync_once", lambda: fetched.append(1) or False)
+    body = b'{"ref":"refs/heads/some-feature"}'
+    sig = "sha256=" + _hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+    r = client.post("/webhook/github", content=body,
+                    headers={"X-GitHub-Event": "push", "X-Hub-Signature-256": sig})
+    assert r.status_code == 200 and fetched == []

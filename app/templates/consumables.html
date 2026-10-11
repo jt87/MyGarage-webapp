@@ -1,36 +1,20 @@
 {% extends "base.html" %}
-{% from "macros.html" import buy %}
-{% block title %}Shopping list · {{ site_title }}{% endblock %}
+{% from "macros.html" import cons_row %}
+{% set large = true %}
+{% block nav_actions %}<button class="nav-btn" type="button" data-clear-checks>Clear</button>{% endblock %}
 {% block content %}
-<div class="section-head">
-  <h1>Shopping list</h1>
-  <div class="actions">
-    <button class="btn" type="button" data-clear-checks>Clear checks</button>
-    <button class="btn" type="button" onclick="print()">Print</button>
+<div class="large-title"><h1>Shopping List</h1><p class="t-subhead secondary" data-check-count>{{ inv.consumables|length }} parts across {{ groups|length }} tools</p></div>
+<label class="searchbar">
+  <svg aria-hidden="true"><use href="/static/icons.svg#search"/></svg>
+  <input type="search" placeholder="Search" data-filter="[data-cons]" aria-label="Filter parts" autocomplete="off" autocorrect="off" autocapitalize="off" enterkeyhint="search">
+</label>
+{% for t, items in groups %}
+<div class="section checklist" data-filter-group>
+  <div class="section-header prominent"><a href="{{ t.url }}" style="color:var(--label);font-weight:700;font-size:inherit">{{ t.model_name }}</a></div>
+  <div class="group">
+    {% for c in items %}{{ cons_row(c, checklist=True) }}{% endfor %}
   </div>
 </div>
-<p class="muted small">Every consumable and replacement part across the garage, with search links at the stores named in each tool's notes. Tick items to build a list; ticks are saved on this device only.</p>
-
-<div class="sticky-filter"><input class="filter-input" type="search" placeholder="Filter: blade, battery, KP2039…" data-filter=".cons-group .cons" aria-label="Filter consumables" enterkeyhint="search" autocorrect="off" autocapitalize="off" style="margin:0"></div>
-
-{% for t, items in groups %}
-<section class="panel cons-group">
-  <div class="section-head">
-    <h2><a href="{{ t.url }}">{{ t.model_name }}</a> <span class="muted small">{{ t.subtitle }}</span></h2>
-  </div>
-  <div class="cons-list">
-    {% for c in items %}
-    <article class="cons" data-text="{{ (c.item ~ ' ' ~ c.spec ~ ' ' ~ c.where ~ ' ' ~ t.title)|lower }}">
-      <label class="check"><input type="checkbox" data-key="{{ t.slug }}:{{ c.item }}"><span class="sr-only">Need</span></label>
-      <div class="cons-main">
-        <h3>{{ c.item_html|safe }}</h3>
-        <p>{{ c.spec_html|safe }}</p>
-        <p class="muted small">Where: {{ c.where_html|safe }}{% if c.price %} · <strong>{{ c.price_html|safe }}</strong>{% endif %}</p>
-      </div>
-      {{ buy(c) }}
-    </article>
-    {% endfor %}
-  </div>
-</section>
 {% endfor %}
+<p class="section-footer" style="text-align:center">Tap a part to see where to buy it. Checkmarks stay on this device.</p>
 {% endblock %}
