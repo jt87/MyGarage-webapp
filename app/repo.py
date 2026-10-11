@@ -19,6 +19,7 @@ from markdown_it import MarkdownIt
 # HEIC/HEIF is what an iPhone camera saves; thumbnails convert it to JPEG.
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
 MODEL_EXT = {".stl"}
+VIEWABLE_EXT = IMAGE_EXT | MODEL_EXT | {".pdf"}
 PROOF_RE = re.compile(r"receipt|invoice|proof|order|purchase|bill-of-sale", re.I)
 MANUAL_RE = re.compile(r"manual|guide|quick-?start|instructions", re.I)
 SERVED_DIRS = ("tools", "projects", "reference")
@@ -63,7 +64,11 @@ def rewrite_href(href: str, base_dir: str, root: Path) -> str:
     if target.endswith(".md") and segs[0] == "reference":
         return f"/reference/{quote(posixpath.splitext(segs[-1])[0])}{frag}"
     if segs[0] in SERVED_DIRS:
-        return f"/files/{quote(target)}{frag}"
+        ext = posixpath.splitext(target)[1].lower()
+        # Viewable files open in the in-app viewer (which has a back button);
+        # a raw PDF in a Home Screen app is a dead end.
+        prefix = "/view/" if ext in VIEWABLE_EXT else "/files/"
+        return f"{prefix}{quote(target)}{frag}"
     return href
 
 
@@ -93,8 +98,9 @@ class Renderer:
             tok = tokens[idx]
             src = tok.attrGet("src") or ""
             new = rewrite_href(src, self._base, self.root)
-            if new.startswith("/files/"):
-                new = "/thumb/" + new[len("/files/"):] + "?w=1280"
+            for prefix in ("/files/", "/view/"):
+                if new.startswith(prefix):
+                    new = "/thumb/" + new[len(prefix):].split("#")[0] + "?w=1280"
             tok.attrSet("src", new)
             tok.attrSet("loading", "lazy")
             return default_image(tokens, idx, options, env)

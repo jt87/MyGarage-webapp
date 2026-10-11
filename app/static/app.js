@@ -134,18 +134,29 @@
     else { try { await navigator.clipboard.writeText(data.url); toast("Link Copied"); } catch {} }
   }));
   // Files: share the file itself (Save to Files, Print, AirDrop, Books).
-  $$("[data-share-file]").forEach((b) => b.addEventListener("click", async () => {
+  // Safari only allows the share sheet right after a tap, so the file is
+  // fetched ahead of time; waiting for a download inside the tap handler
+  // would lose that permission.
+  $$("[data-share-file]").forEach((b) => {
     const url = b.dataset.shareFile;
-    try {
-      const blob = await (await fetch(url)).blob();
-      const file = new File([blob], b.dataset.name, { type: blob.type });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: b.dataset.name });
-        return;
+    let file = null;
+    fetch(url).then((r) => r.ok ? r.blob() : null).then((blob) => {
+      if (blob) file = new File([blob], b.dataset.name, { type: blob.type });
+    }).catch(() => {});
+    b.addEventListener("click", async () => {
+      try {
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: b.dataset.name });
+        } else if (navigator.share) {
+          await navigator.share({ title: b.dataset.name, url: location.href.split("#")[0] });
+        } else {
+          location.href = url + "?download";
+        }
+      } catch (err) {
+        if (!err || err.name !== "AbortError") location.href = url + "?download";
       }
-    } catch (err) { if (err && err.name === "AbortError") return; }
-    location.href = url + "?download";
-  }));
+    });
+  });
 
   // ---------------------------------------------------------------- shopping checklist
   const KEY = "garage.shopping";

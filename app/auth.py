@@ -90,9 +90,16 @@ class AuthConfig:
         self.load()
 
     def load(self) -> None:
-        try:
-            self.data = json.loads(self.path.read_text())
-        except (OSError, ValueError):
+        if self.path.exists():
+            try:
+                self.data = json.loads(self.path.read_text())
+            except (OSError, ValueError) as e:
+                # Never treat a damaged file as "not set up": that would reopen
+                # first-run setup. Refuse to start and say how to fix it.
+                raise SystemExit(
+                    f"Can't read the login settings in {self.path} ({e}). Fix its permissions "
+                    "or contents, or delete it and create a new login from your home network.")
+        else:
             self.data = {}
         changed = False
         for key, default in (("method", "forms"), ("required", "enabled"),
@@ -191,7 +198,7 @@ def is_local(scope) -> bool:
 def client_key(scope) -> str:
     """Rate-limit key: peer address, plus the forwarded client when proxied."""
     headers = dict(scope.get("headers") or [])
-    fwd = headers.get(b"x-forwarded-for", b"").split(b",")[0].strip().decode(errors="ignore")
+    fwd = headers.get(b"x-forwarded-for", b"").split(b",")[-1].strip().decode(errors="ignore")
     peer = (scope.get("client") or ("?",))[0]
     return f"{peer}|{fwd}"
 
@@ -212,8 +219,11 @@ class Sessions:
         if not token:
             return None
         try:
-            data = self._signer().loads(token, max_age=REMEMBER_SECONDS)
+            data, issued = self._signer().loads(token, max_age=REMEMBER_SECONDS,
+                                                return_timestamp=True)
         except (BadSignature, SignatureExpired):
+            return None
+        if not data.get("r") and time.time() - issued.timestamp() > SESSION_SECONDS:
             return None
         if data.get("v") != self.cfg.data["session_version"] or data.get("u") != self.cfg.username:
             return None
@@ -256,8 +266,17 @@ def main(argv: list[str]) -> int:
     """`python -m app.auth reset`  forget the login so setup runs again.
     `python -m app.auth status` show the current security settings."""
     path = Path(os.environ.get("CONFIG_PATH", "/data/config/auth.json"))
-    cfg = AuthConfig(path)
     cmd = argv[1] if len(argv) > 1 else "status"
+    try:
+        cfg = AuthConfig(path)
+    except SystemExit as e:
+        if cmd != "reset":
+            print(e)
+            return 1
+        backup = path.with_suffix(".damaged")
+        path.replace(backup)
+        print(f"Moved the unreadable settings file to {backup}.")
+        cfg = AuthConfig(path)
     if cmd == "reset":
         cfg.reset()
         print("Login reset. Open MyGarage from your home network to create a new username and password.")

@@ -420,8 +420,10 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
 .lightbox .close svg { width: 16px; height: 16px; stroke-width: 3; display: block; margin: auto; }
 
 /* ------------------------------------------------------------------ viewer */
-.pdf { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0 90px; overflow-x: auto; margin: 0 calc(-1 * var(--gutter-r)) 0 calc(-1 * var(--gutter)); }
-.pdf-page { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); flex: 0 0 auto; }
+/* Pages are centered with auto margins, not align-items: center, so a zoomed
+   page wider than the screen can still be scrolled to its left edge. */
+.pdf { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 4px 0 90px; overflow-x: auto; margin: 0 calc(-1 * var(--gutter-r)) 0 calc(-1 * var(--gutter)); }
+.pdf-page { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); flex: 0 0 auto; margin: 0 auto; }
 .pdf-page canvas { display: block; width: 100%; height: 100%; }
 .pdf-loading { padding: 80px 0; text-align: center; color: var(--secondary-label); }
 .pdf-hud {
