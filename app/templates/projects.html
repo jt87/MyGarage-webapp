@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% set large = true %}
+{% block content %}
+<div class="large-title"><h1>Projects</h1></div>
+<div class="section">
+  <div class="group">
+    {% for p in inv.projects %}
+    <a class="row has-icon" href="{{ p.url }}">
+      <span class="tile" style="--tile: var(--{{ 'green' if p.status|lower in ('done','finished') else 'orange' if p.status|lower == 'in progress' else 'indigo' }})">{{ icon("folder") }}</span>
+      <span class="row-body">
+        <span class="row-title clip">{{ p.title }}</span>
+        <span class="row-sub clip">{{ p.status|capitalize }}{% if p.started %} · Started {{ p.started }}{% endif %} · {{ p.files|length }} file{{ '' if p.files|length == 1 else 's' }}</span>
+      </span>
+      <span class="chev"></span>
+    </a>
+    {% else %}
+    <div class="row secondary">No projects yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

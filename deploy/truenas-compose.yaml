@@ -1,0 +1,33 @@
+# TrueNAS SCALE: Apps → Discover Apps → ⋮ → Install via YAML. Paste this,
+# then replace every CHANGE_ME. See README.md for the full walkthrough.
+services:
+  mygarage:
+    image: ghcr.io/jt87/mygarage:latest
+    container_name: mygarage
+    restart: unless-stopped
+    user: "568:568"            # TrueNAS "apps" user; owns the data folder below
+    ports:
+      - "8088:8000"            # http://<truenas-ip>:8088 on your LAN
+    environment:
+      SITE_TITLE: MyGarage
+      # Content comes from your data repo (see jt87/MyGarage-dataset for the format). The server keeps a clone in /data as its
+      # cache and serves every page from it. It asks GitHub for changes when a
+      # push webhook arrives, or at most every FRESHNESS_SECONDS when someone
+      # is using the site, or every SYNC_INTERVAL otherwise.
+      GIT_REPO_URL: https://github.com/CHANGE_ME/CHANGE_ME.git   # your data repo
+      GIT_BRANCH: main
+      GIT_TOKEN: CHANGE_ME       # fine-grained GitHub token: your data repo only, Contents = Read-only (remove for a public repo)
+      WEBHOOK_SECRET: CHANGE_ME  # same secret as the GitHub webhook (see README); instant updates
+      FRESHNESS_SECONDS: "300"
+      SYNC_INTERVAL: "1800"
+      GITHUB_REPO: CHANGE_ME/CHANGE_ME   # your data repo; adds "Edit" links to GitHub; remove to hide them
+      # No login settings here: like Sonarr and Radarr, MyGarage asks you to
+      # create a username and password the first time you open it, and keeps
+      # them (hashed) in /data/config. Change them later in Settings.
+    volumes:
+      - /mnt/CHANGE_ME_POOL/apps/mygarage:/data   # repo clone, thumbnail cache, and config/ (your login; keep it)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 60s
+      timeout: 5s
+      start_period: 120s
