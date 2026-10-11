@@ -152,7 +152,9 @@ class RepoSync:
                     self._git("clone", "--depth", "1", "--branch", self.branch, self.url,
                               str(self.path))
                 else:
-                    self._git("fetch", "--depth", "1", "origin", self.branch, cwd=self.path)
+                    # Fetch from GIT_REPO_URL, not the clone's "origin", so
+                    # pointing the app at a different repo takes effect.
+                    self._git("fetch", "--depth", "1", self.url, self.branch, cwd=self.path)
                     self._git("reset", "--hard", "FETCH_HEAD", cwd=self.path)
                     self._git("clean", "-fdq", cwd=self.path)
                 self._count("fetch")

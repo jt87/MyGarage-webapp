@@ -108,6 +108,17 @@ def test_page_view_pulls_new_commit(tmp_path):
     assert s.ensure_fresh(0) is True
     assert (tmp_path / "clone" / "README.md").read_text() == "two"
 
+    # Pointing the app at a different repo replaces the old content.
+    other = tmp_path / "other.git"
+    git("init", "-q", "--bare", "-b", "main", str(other), cwd=tmp_path)
+    git("push", "-q", str(other), "HEAD:main", cwd=work)
+    (work / "README.md").write_text("mine")
+    git("commit", "-qam", "3", cwd=work)
+    git("push", "-q", str(other), "HEAD:main", cwd=work)
+    s2 = RepoSync(tmp_path / "clone", url=str(other), branch="main")
+    assert s2.ensure_fresh(0) is True
+    assert (tmp_path / "clone" / "README.md").read_text() == "mine"
+
 
 def test_webhook_requires_signature(monkeypatch):
     import hashlib
