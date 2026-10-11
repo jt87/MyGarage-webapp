@@ -47,11 +47,11 @@ In the consumables table, **bold** part numbers (e.g. `Delta **22-547**`) become
 
 You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docker.
 
-1. **Make the image pullable.** Merging this to `main` runs the GitHub Action that builds `ghcr.io/jt87/garage-tools-web`. On GitHub, open your profile → Packages → `garage-tools-web` → Package settings, and set visibility to **Public**. The image holds only the app code, never your garage data. (If you'd rather keep it private, add a GHCR registry credential in TrueNAS instead.)
-2. **Create a read-only GitHub token.** GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only `jt87/garage-tools`. Permissions: Contents → Read-only. Pick a long expiry and set a reminder; when it expires the site keeps showing the last copy and the footer says the sync failed.
+1. **Make the image pullable.** Merging this to `main` runs the GitHub Action that builds `ghcr.io/jt87/mygarage`. On GitHub, open your profile → Packages → `mygarage` → Package settings, and set visibility to **Public**. The image holds only the app code, never your garage data. (If you'd rather keep it private, add a GHCR registry credential in TrueNAS instead.)
+2. **Create a read-only GitHub token.** GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only `jt87/MyGarage`. Permissions: Contents → Read-only. Pick a long expiry and set a reminder; when it expires the site keeps showing the saved copy and the home screen says it can't reach GitHub.
 3. **Create a dataset** for the app's data, e.g. `tank/apps/mygarage`, and give the `apps` user (uid 568) full control of it. It only holds a clone of the repo and a thumbnail cache, so it doesn't need snapshots.
 4. **Install.** Apps → Discover Apps → ⋮ (top right) → Install via YAML. Name it `mygarage` and paste [`deploy/truenas-compose.yaml`](deploy/truenas-compose.yaml), filling in each `CHANGE_ME`: the token, a password, a random `SECRET_KEY` (run `openssl rand -hex 32` in a Mac Terminal) and the dataset path.
-5. Open `http://<truenas-ip>:8088` and sign in.
+5. Open `http://<truenas-ip>:8088` and log in.
 6. **Add the GitHub webhook** for instant updates, once the site is on your domain. On GitHub open the repo's Settings → Webhooks → Add webhook. Set the payload URL to `https://garage.example.com/webhook/github`, the content type to `application/json`, and the secret to the same value as `WEBHOOK_SECRET`. Choose "Just the push event". Webhooks are free and don't count against any limit. If GitHub can't reach your server (for example, it's only on Tailscale), skip this; changes then show up within 5 minutes of opening the site. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
 
 To update the app later, open it in Apps and choose Update (or Pull Image, then restart) after a new image is built.
@@ -69,7 +69,7 @@ Point a subdomain such as `garage.example.com` at the app through whatever alrea
 
 Once it's only reached over HTTPS, set `COOKIE_SECURE: "true"` in the YAML.
 
-**Keep the sign-in on** if the site is reachable from the internet: the repo has serial numbers and, once you add them, receipts. If your proxy already does authentication (Cloudflare Access, Authelia, Authentik), you can remove `AUTH_PASSWORD` to rely on that instead. Wrong passwords are limited to 10 tries per 15 minutes per IP.
+**Keep the login on** if the site is reachable from the internet: the repo has serial numbers and, once you add them, receipts. If your proxy already does authentication (Cloudflare Access, Authelia, Authentik), you can remove `AUTH_PASSWORD` to rely on that instead. Wrong passwords are limited to 10 tries per 15 minutes per IP.
 
 On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen. It then opens full screen with its own icon, like a stock app. In a manual, the Share button hands the PDF to the iOS share sheet for Save to Files, Print, AirDrop or Books.
 
@@ -83,7 +83,7 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 | `WEBHOOK_SECRET` | (none) | Enables `/webhook/github` for instant updates on push |
 | `FRESHNESS_SECONDS` | `300` | A page view checks GitHub first if the last check is older than this |
 | `SYNC_INTERVAL` | `1800` | Seconds between background checks (minimum 60). "Check for Updates" on the home screen checks right away |
-| `AUTH_USERNAME` / `AUTH_PASSWORD` | (none) | Sign-in. No password means no sign-in |
+| `AUTH_USERNAME` / `AUTH_PASSWORD` | (none) | Login. No password means no login screen |
 | `SECRET_KEY` | random | Signs the login cookie; set it so restarts don't sign you out |
 | `COOKIE_SECURE` | `false` | `true` once served over HTTPS only |
 | `GITHUB_REPO` | (none) | `owner/name`; shows "Edit" links to the README on GitHub |
