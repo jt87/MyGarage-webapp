@@ -37,20 +37,35 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 HERE = Path(__file__).parent
+
+
+def setting(name: str, default: str = "") -> str:
+    """An environment value, ignoring the compose file's CHANGE_ME placeholders.
+
+    A placeholder left in WEBHOOK_SECRET would be a publicly known secret, and
+    one left in GIT_TOKEN makes GitHub refuse even a public repo.
+    """
+    value = os.environ.get(name, default)
+    if "CHANGE_ME" in value:
+        logging.getLogger("garage").warning("%s still says CHANGE_ME; ignoring it", name)
+        return default
+    return value
+
+
 REPO_PATH = Path(os.environ.get("REPO_PATH", "/data/repo")).resolve()
 CACHE_PATH = Path(os.environ.get("CACHE_PATH", "/data/cache")).resolve()
 SITE_TITLE = os.environ.get("SITE_TITLE", "MyGarage")
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", "/data/config/auth.json"))
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # "owner/name", for "Edit on GitHub" links
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+GITHUB_REPO = setting("GITHUB_REPO")  # "owner/name", for "Edit on GitHub" links
+WEBHOOK_SECRET = setting("WEBHOOK_SECRET")
 # How stale the cached clone may get before a page view asks GitHub (seconds).
 FRESHNESS_SECONDS = float(os.environ.get("FRESHNESS_SECONDS", "300"))
 
 sync = RepoSync(
     REPO_PATH,
-    url=os.environ.get("GIT_REPO_URL", ""),
+    url=setting("GIT_REPO_URL"),
     branch=os.environ.get("GIT_BRANCH", "main"),
-    token=os.environ.get("GIT_TOKEN", ""),
+    token=setting("GIT_TOKEN"),
     interval=int(os.environ.get("SYNC_INTERVAL", "1800")),
     state_file=CACHE_PATH / "sync-state.json",
 )
@@ -244,7 +259,9 @@ def owner_link(rel: str) -> tuple[str, str] | None:
 async def files(request: Request):
     full = safe_path(request.path_params["path"])
     media = mimetypes.guess_type(full.name)[0] or "application/octet-stream"
-    inline = media.startswith("image/") or media in ("application/pdf", "text/plain")
+    # SVG can carry script, so it downloads instead of opening on this origin.
+    inline = (media.startswith("image/") and media != "image/svg+xml"
+              or media in ("application/pdf", "text/plain"))
     disp = "inline" if inline and "download" not in request.query_params else "attachment"
     ascii_name = full.name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "")
     return FileResponse(full, media_type=media, headers={
@@ -340,8 +357,10 @@ async def github_webhook(request: Request):
             ref = json.loads(body or b"{}").get("ref", "")
         except ValueError:
             ref = ""
-        # Only pushes to the branch we serve cost a fetch.
-        if ref == f"refs/heads/{sync.branch}" and await anyio.to_thread.run_sync(sync.sync_once):
+        # Only pushes to the branch we serve cost a fetch. ensure_fresh keeps
+        # the hourly cap, so replayed or flooded deliveries can't hammer GitHub.
+        if ref == f"refs/heads/{sync.branch}" and await anyio.to_thread.run_sync(
+                sync.ensure_fresh, 5):
             inventory.invalidate()
     return PlainTextResponse("ok")
 

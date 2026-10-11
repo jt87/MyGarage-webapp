@@ -1,5 +1,6 @@
 # TrueNAS SCALE: Apps → Discover Apps → ⋮ → Install via YAML. Paste this,
 # then replace every CHANGE_ME. See README.md for the full walkthrough.
+# Any setting still set to CHANGE_ME is ignored, as if you had removed it.
 services:
   mygarage:
     image: ghcr.io/jt87/mygarage:latest

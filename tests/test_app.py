@@ -159,12 +159,35 @@ def test_webhook_ignores_other_branches(monkeypatch):
 
     monkeypatch.setattr(main, "WEBHOOK_SECRET", "s3cret")
     fetched = []
-    monkeypatch.setattr(main.sync, "sync_once", lambda: fetched.append(1) or False)
-    body = b'{"ref":"refs/heads/some-feature"}'
-    sig = "sha256=" + _hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
-    r = client.post("/webhook/github", content=body,
-                    headers={"X-GitHub-Event": "push", "X-Hub-Signature-256": sig})
-    assert r.status_code == 200 and fetched == []
+    monkeypatch.setattr(main.sync, "ensure_fresh", lambda age: fetched.append(age) or False)
+
+    def push(ref):
+        body = f'{{"ref":"{ref}"}}'.encode()
+        sig = "sha256=" + _hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+        return client.post("/webhook/github", content=body,
+                           headers={"X-GitHub-Event": "push", "X-Hub-Signature-256": sig})
+
+    assert push("refs/heads/some-feature").status_code == 200 and fetched == []
+    # The served branch goes through the capped check, not a bare fetch.
+    assert push(f"refs/heads/{main.sync.branch}").status_code == 200 and len(fetched) == 1
+
+
+def test_placeholders_are_ignored(monkeypatch):
+    monkeypatch.setenv("WEBHOOK_SECRET", "CHANGE_ME")
+    monkeypatch.setenv("GIT_TOKEN", "real-token")
+    assert main.setting("WEBHOOK_SECRET") == ""
+    assert main.setting("GIT_TOKEN") == "real-token"
+
+
+def test_svg_downloads_instead_of_rendering():
+    svg = Path(main.REPO_PATH) / "tools" / "acme-ts10" / "diagram.svg"
+    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+    try:
+        r = client.get("/files/tools/acme-ts10/diagram.svg")
+        assert r.status_code == 200
+        assert r.headers["content-disposition"].startswith("attachment")
+    finally:
+        svg.unlink()
 
 
 

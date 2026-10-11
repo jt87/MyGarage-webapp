@@ -84,7 +84,9 @@
     });
   }
 
-  pdfjsLib.getDocument({ url: el.dataset.src, disableAutoFetch: true, rangeChunkSize: 262144 })
+  pdfjsLib.getDocument({ url: el.dataset.src, disableAutoFetch: true, rangeChunkSize: 262144,
+    // CVE-2024-4367: a crafted font could run script in pdf.js < 4.2.67.
+    isEvalSupported: false })
     .promise.then(async (d) => {
       doc = d;
       const first = await doc.getPage(1);

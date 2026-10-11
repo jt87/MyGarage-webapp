@@ -1,7 +1,7 @@
 """Read the garage repo (Markdown + files) into structured data.
 
 The repo stays the source of truth: nothing here writes to it. Everything is
-parsed from the README conventions described in CLAUDE.md, and anything that
+parsed from the README conventions of the data repo (see README.md), and anything that
 doesn't fit a known shape is still rendered as plain Markdown.
 """
 
@@ -236,7 +236,10 @@ def folder_files(root: Path, rel: str) -> list[FileItem]:
             else "model" if ext in MODEL_EXT
             else "other"
         )
-        st = p.stat()
+        try:
+            st = p.stat()
+        except OSError:  # broken symlink
+            continue
         out.append(FileItem(p.name, f"{rel}/{p.name}", st.st_size, kind, int(st.st_mtime)))
     return out
 
