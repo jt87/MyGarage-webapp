@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}More · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>More</h1>
+<div class="list-group">
+  <a class="list-item" href="/insurance"><span>Insurance inventory</span><small>{{ inv.total_value_text.split(' (')[0] if inv.total_value_text else money(inv.total_value) }}</small></a>
+  {% for r in inv.references %}
+  <a class="list-item" href="{{ r.url if r.slug != 'index' else '/reference' }}"><span>{{ r.title }}</span><small>Reference</small></a>
+  {% endfor %}
+  <a class="list-item" href="/search"><span>Search</span></a>
+</div>
+<div class="list-group">
+  <form method="post" action="/sync"><button class="list-item"><span>Refresh from GitHub</span><small>{% if sync.head %}{{ sync.head[:7] }}{% endif %}</small></button></form>
+  {% if github_repo %}<a class="list-item" href="https://github.com/{{ github_repo }}" target="_blank" rel="noopener"><span>Open repo on GitHub</span><small>↗</small></a>{% endif %}
+  {% if auth_enabled %}<form method="post" action="/logout"><button class="list-item danger"><span>Sign out</span></button></form>{% endif %}
+</div>
+{% endblock %}

@@ -1,7 +1,7 @@
 {% macro tool_card(t) -%}
 <a class="card tool-card" href="{{ t.url }}">
   <div class="thumb">
-    {% if t.cover %}<img src="{{ t.cover.thumb }}?w=640" alt="" loading="lazy">
+    {% if t.cover %}<img src="{{ t.cover.thumb }}&w=640" alt="" loading="lazy">
     {% else %}<span class="placeholder">{{ t.brand[:1] }}</span>{% endif %}
   </div>
   <div class="card-body">

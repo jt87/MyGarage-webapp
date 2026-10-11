@@ -5,24 +5,31 @@
 <nav class="crumbs"><a href="/tools">Tools</a> / <a href="/tools?category={{ t.category|q }}">{{ t.category }}</a></nav>
 
 <div class="tool-hero">
+  {% if t.photos %}
   <div class="gallery" data-gallery>
-    {% if t.photos %}
-      <a class="gallery-main" href="{{ t.photos[0].url }}" data-full="{{ t.photos[0].url }}">
-        <img src="{{ t.photos[0].thumb }}?w=1280" alt="{{ t.photos[0].label }}">
-      </a>
-      {% if t.photos|length > 1 %}
-      <div class="gallery-strip">
-        {% for f in t.photos %}
-        <button type="button" data-src="{{ f.thumb }}?w=1280" data-full="{{ f.url }}" {% if loop.first %}aria-pressed="true"{% endif %} title="{{ f.label }}">
-          <img src="{{ f.thumb }}?w=320" alt="{{ f.label }}" loading="lazy">
-        </button>
-        {% endfor %}
-      </div>
-      {% endif %}
-    {% else %}
-      <div class="gallery-empty"><span class="placeholder">{{ t.brand[:1] }}</span><p class="muted">No photo yet. Add <code>photo.jpg</code> to <code>tools/{{ t.slug }}/</code>.</p></div>
+    <div class="slides" tabindex="0" aria-label="Photos">
+      {% for f in t.photos %}
+      <button type="button" class="slide" data-full="{{ f.thumb }}&w=2048" aria-label="Enlarge {{ f.label }}">
+        <img src="{{ f.thumb }}&w=1280"
+             srcset="{{ f.thumb }}&w=640 640w, {{ f.thumb }}&w=1280 1280w, {{ f.thumb }}&w=2048 2048w"
+             sizes="(max-width: 860px) 100vw, 600px" alt="{{ f.label }}" {% if not loop.first %}loading="lazy"{% endif %}>
+      </button>
+      {% endfor %}
+    </div>
+    {% if t.photos|length > 1 %}
+    <span class="slide-count" aria-hidden="true"><span data-current>1</span> / {{ t.photos|length }}</span>
+    <div class="gallery-strip">
+      {% for f in t.photos %}
+      <button type="button" data-index="{{ loop.index0 }}" {% if loop.first %}aria-pressed="true"{% endif %} aria-label="Show {{ f.label }}">
+        <img src="{{ f.thumb }}&w=320" alt="" loading="lazy">
+      </button>
+      {% endfor %}
+    </div>
     {% endif %}
   </div>
+  {% else %}
+  <div class="gallery-empty"><span class="placeholder">{{ t.brand[:1] }}</span><p class="muted small">No photo yet. Add <code>photo.jpg</code> (or an iPhone <code>.heic</code>) to <code>tools/{{ t.slug }}/</code>.</p></div>
+  {% endif %}
 
   <div class="hero-info">
     <span class="chip">{{ t.category }}</span>
@@ -31,21 +38,29 @@
 
     <div class="quick">
       {% for m in t.manuals %}
-      <a class="btn btn-primary" href="/view/{{ m.path|q }}">📘 {{ 'Manual' if loop.length == 1 else m.label }}</a>
+      <a class="btn btn-primary" href="/view/{{ m.path|q }}">{{ 'Manual' if loop.length == 1 else m.label }}</a>
       {% endfor %}
-      {% if t.consumables %}<a class="btn" href="#consumables">🛒 Consumables ({{ t.consumables|length }})</a>{% endif %}
-      {% if t.proofs %}<a class="btn" href="#purchase">🧾 Receipt</a>{% endif %}
-      {% if github_repo %}<a class="btn btn-ghost" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener">✎ Edit</a>{% endif %}
+      {% if t.consumables %}<a class="btn" href="#consumables">Parts &amp; consumables</a>{% endif %}
+      {% if t.proofs %}<a class="btn" href="#purchase">Receipt</a>{% endif %}
     </div>
 
     <dl class="kv kv-compact">
       {% if t.model_no %}<dt>Model #</dt><dd>{{ t.model_no }}</dd>{% endif %}
-      {% if t.serial %}<dt>Serial #</dt><dd>{{ t.serial|truncate(80) }}</dd>{% endif %}
+      {% if t.serial %}<dt>Serial #</dt><dd>{{ t.serial.split('. ')[0] }}</dd>{% endif %}
       {% if t.value_text %}<dt>Replacement</dt><dd>{{ t.value_text }}</dd>{% endif %}
       {% if t.paid_text %}<dt>Paid</dt><dd>{{ t.paid_text }}</dd>{% endif %}
     </dl>
   </div>
 </div>
+
+<nav class="jump" aria-label="On this page">
+  <a href="#specs">Specs</a>
+  <a href="#purchase">Purchase</a>
+  {% if t.consumables %}<a href="#consumables">Parts</a>{% endif %}
+  <a href="#documents">Docs</a>
+  {% for title, html in t.sections_html %}<a href="#{{ title|lower|replace(' & ','-')|replace(' ','-') }}">{{ title.split(' ')[0] }}</a>{% endfor %}
+  {% if t.projects %}<a href="#projects">Projects</a>{% endif %}
+</nav>
 
 <section class="panel" id="specs">
   <h2>Specifications</h2>
@@ -97,11 +112,15 @@
 {% endfor %}
 
 {% if t.projects %}
-<section class="panel">
+<section class="panel" id="projects">
   <h2>Used in projects</h2>
   {% for slug, title in t.projects %}<a class="row-link" href="/projects/{{ slug }}">{{ title }}</a>{% endfor %}
 </section>
 {% endif %}
 
-<dialog class="lightbox" data-lightbox><form method="dialog"><button aria-label="Close">×</button></form><img alt=""></dialog>
+{% if github_repo %}
+<p class="edit-link"><a href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a></p>
+{% endif %}
+
+<dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button aria-label="Close">×</button></form><img alt=""></dialog>
 {% endblock %}

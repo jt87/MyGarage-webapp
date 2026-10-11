@@ -63,3 +63,54 @@ def test_proof_of_purchase_detection(tmp_path):
     assert [f.name for f in t.manuals] == ["manual.pdf"]
     assert [f.name for f in t.documents] == ["parts-list.pdf"]
     assert [f.name for f in t.photos] == ["photo.jpg"]
+
+
+def test_page_view_pulls_new_commit(tmp_path):
+    """A push to the remote shows up on the next freshness check."""
+    import subprocess
+
+    from app.sync import RepoSync
+
+    def git(*a, cwd):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=cwd,
+                       check=True, capture_output=True)
+
+    origin, work = tmp_path / "origin.git", tmp_path / "work"
+    git("init", "-q", "--bare", "-b", "main", str(origin), cwd=tmp_path)
+    git("clone", "-q", str(origin), str(work), cwd=tmp_path)
+    (work / "README.md").write_text("one")
+    git("add", ".", cwd=work)
+    git("commit", "-qm", "1", cwd=work)
+    git("push", "-q", "origin", "HEAD:main", cwd=work)
+
+    s = RepoSync(tmp_path / "clone", url=str(origin), branch="main")
+    assert s.sync_once()
+    assert s.ensure_fresh(0) is False  # nothing new
+    (work / "README.md").write_text("two")
+    git("commit", "-qam", "2", cwd=work)
+    git("push", "-q", "origin", "HEAD:main", cwd=work)
+    assert s.ensure_fresh(60) is False  # throttled: checked moments ago
+    assert s.ensure_fresh(0) is True
+    assert (tmp_path / "clone" / "README.md").read_text() == "two"
+
+
+def test_webhook_requires_signature(monkeypatch):
+    import hashlib
+    import hmac as _hmac
+
+    from app import main
+
+    monkeypatch.setattr(main, "WEBHOOK_SECRET", "s3cret")
+    body = b'{"ref":"refs/heads/main"}'
+    good = "sha256=" + _hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+    hdr = {"X-GitHub-Event": "ping", "Content-Type": "application/json"}
+    assert client.post("/webhook/github", content=body, headers={**hdr, "X-Hub-Signature-256": "sha256=0"}).status_code == 401
+    assert client.post("/webhook/github", content=body, headers={**hdr, "X-Hub-Signature-256": good}).status_code == 200
+
+
+def test_mobile_basics():
+    html = client.get("/tools/delta-22-540").text
+    assert "viewport-fit=cover" in html
+    assert 'class="tabbar"' in html
+    assert client.get("/more").status_code == 200
+    assert client.get("/view/tools/delta-22-540/manual.pdf").status_code == 200

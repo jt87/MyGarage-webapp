@@ -1,9 +1,12 @@
 """Keep a local copy of the repo up to date.
 
 Two modes:
-  * GIT_REPO_URL set: clone into REPO_PATH and `git fetch` + hard reset every
-    SYNC_INTERVAL seconds. GIT_TOKEN (a read-only GitHub token) is sent as an
-    HTTP header so it never lands in .git/config.
+  * GIT_REPO_URL set: clone into REPO_PATH and keep it at the branch tip.
+    Every page view asks GitHub for the branch's latest commit (`git
+    ls-remote`, at most once per FRESHNESS_SECONDS) and pulls before rendering
+    if it moved. A GitHub webhook and a background SYNC_INTERVAL loop pull
+    too. GIT_TOKEN (a read-only GitHub token) is sent as an HTTP header so it
+    never lands in .git/config.
   * GIT_REPO_URL unset: REPO_PATH is a folder you mounted yourself; it's
     re-read whenever a file in it changes.
 """
@@ -33,7 +36,10 @@ class RepoSync:
         self.last_ok: datetime | None = None
         self.last_error = ""
         self.head = ""
+        self.last_checked: datetime | None = None
+        self._remote_checked = 0.0
         self._lock = threading.Lock()
+        self._fresh_lock = threading.Lock()
         self._wake = threading.Event()
 
     @property
@@ -81,7 +87,8 @@ class RepoSync:
                 head = self._git("rev-parse", "HEAD", cwd=self.path)
                 changed = head != self.head
                 self.head = head
-                self.last_ok = datetime.now(timezone.utc)
+                self.last_ok = self.last_checked = datetime.now(timezone.utc)
+                self._remote_checked = time.monotonic()
                 self.last_error = ""
                 if changed:
                     log.info("repo at %s", head[:7])
@@ -90,6 +97,36 @@ class RepoSync:
                 self.last_error = str(e)
                 log.warning("sync failed: %s", e)
                 return False
+
+    def ensure_fresh(self, max_age: float) -> bool:
+        """Pull if the remote branch moved. Returns True if HEAD changed.
+
+        Costs one `git ls-remote` round trip at most every `max_age` seconds;
+        concurrent callers wait for the one check in flight. If GitHub can't
+        be reached, the last good copy keeps being served.
+        """
+        if not self.git_mode or time.monotonic() - self._remote_checked < max_age:
+            return False
+        with self._fresh_lock:
+            if time.monotonic() - self._remote_checked < max_age:
+                return False
+            try:
+                out = self._git("ls-remote", self.url, f"refs/heads/{self.branch}")
+                remote = out.split()[0] if out else ""
+            except Exception as e:
+                self._remote_checked = time.monotonic()
+                self.last_error = str(e)
+                log.warning("remote check failed: %s", e)
+                return False
+            self._remote_checked = time.monotonic()
+            self.last_checked = datetime.now(timezone.utc)
+            if not remote:
+                self.last_error = f"branch {self.branch} not found on remote"
+                return False
+            if remote != self.head:
+                return self.sync_once()
+            self.last_error = ""
+            return False
 
     def trigger(self) -> None:
         self._wake.set()
@@ -128,7 +165,7 @@ class RepoSync:
 class Watcher:
     """Re-run `loader` only when the repo's fingerprint changes."""
 
-    def __init__(self, sync: RepoSync, loader, min_check: float = 10.0):
+    def __init__(self, sync: RepoSync, loader, min_check: float = 2.0):
         self.sync = sync
         self.loader = loader
         self.min_check = min_check
@@ -142,7 +179,9 @@ class Watcher:
 
     def get(self):
         now = time.monotonic()
-        if self._value is not None and now - self._checked < self.min_check:
+        # In git mode the fingerprint is just HEAD, so check it every time.
+        if (self._value is not None and not self.sync.git_mode
+                and now - self._checked < self.min_check):
             return self._value
         with self._lock:
             fp = self.sync.fingerprint()

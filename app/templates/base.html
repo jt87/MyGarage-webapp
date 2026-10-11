@@ -4,42 +4,66 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}{{ site_title }}{% endblock %}</title>
-<meta name="theme-color" content="#e8590c">
+<meta name="theme-color" content="#f4f2ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141518" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/static/icon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="{{ site_title }}">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=3">
 {% block head %}{% endblock %}
 </head>
 <body>
+{% set tabs = [
+  ("/", "Home", "home"),
+  ("/tools", "Tools", "wrench"),
+  ("/consumables", "Shopping", "cart"),
+  ("/projects", "Projects", "folder"),
+  ("/more", "More", "more"),
+] %}
+{% set section = "/" ~ path.split("/")[1] %}
+{% set active_tab = "/" if path == "/" else section if section in ["/tools", "/consumables", "/projects"] else "/more" if section in ["/more", "/insurance", "/reference", "/search"] else "" %}
 <header class="topbar">
-  <a class="brand" href="/"><img src="/static/icon.svg" alt="" width="26" height="26">{{ site_title }}</a>
+  <a class="brand" href="/"><img src="/static/icon.svg" alt="" width="28" height="28">{{ site_title }}</a>
   <nav class="nav" aria-label="Main">
-    {% set links = [("/tools","Tools"),("/consumables","Shopping"),("/projects","Projects"),("/insurance","Insurance"),("/reference","Reference")] %}
-    {% for href, label in links %}
+    {% for href, label in [("/tools","Tools"),("/consumables","Shopping"),("/projects","Projects"),("/insurance","Insurance"),("/reference","Reference")] %}
     <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
   <form class="search" action="/search" role="search">
-    <input type="search" name="q" placeholder="Search tools, parts, manuals…" value="{{ q or '' }}" aria-label="Search">
+    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input type="search" name="q" placeholder="Search tools, parts, manuals" value="{{ q or '' }}" aria-label="Search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
   </form>
 </header>
+
 <main class="wrap">
 {% block content %}{% endblock %}
 </main>
+
 <footer class="footer wrap">
   <span>
   {% if sync.git_mode %}
-    Synced from GitHub{% if sync.head %} at <code>{{ sync.head[:7] }}</code>{% endif %}{% if sync.last_ok %} · {{ sync.last_ok.strftime('%b %-d, %-I:%M %p') }} UTC{% endif %}
-    {% if sync.last_error %}<span class="warn"> · last sync failed: {{ sync.last_error }}</span>{% endif %}
+    {% if sync.last_error %}<span class="warn">Couldn't reach GitHub ({{ sync.last_error }}). Showing the copy from <code>{{ sync.head[:7] }}</code>.</span>
+    {% else %}Up to date with GitHub{% if sync.head %} · <code>{{ sync.head[:7] }}</code>{% endif %}{% endif %}
   {% else %}Reading from a mounted folder{% endif %}
   </span>
   <form method="post" action="/sync"><button class="link">Refresh now</button></form>
   {% if auth_enabled %}<form method="post" action="/logout"><button class="link">Sign out</button></form>{% endif %}
 </footer>
-<script src="/static/app.js" defer></script>
+
+<nav class="tabbar" aria-label="Sections">
+  {% for href, label, icon in tabs %}
+  <a href="{{ href }}" {% if active_tab == href %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>
+    <span>{{ label }}</span>
+  </a>
+  {% endfor %}
+</nav>
+<script src="/static/app.js?v=3" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -44,13 +44,15 @@ AUTH_PASS = os.environ.get("AUTH_PASSWORD", "")
 SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # "owner/name", for "Edit on GitHub" links
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+FRESHNESS_SECONDS = float(os.environ.get("FRESHNESS_SECONDS", "10"))
 
 sync = RepoSync(
     REPO_PATH,
     url=os.environ.get("GIT_REPO_URL", ""),
     branch=os.environ.get("GIT_BRANCH", "main"),
     token=os.environ.get("GIT_TOKEN", ""),
-    interval=int(os.environ.get("SYNC_INTERVAL", "300")),
+    interval=int(os.environ.get("SYNC_INTERVAL", "60")),
 )
 inventory = Watcher(sync, lambda: repo.load(REPO_PATH))
 
@@ -65,7 +67,8 @@ def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLRes
     ctx.setdefault("inv", inventory.get())
     ctx["request"] = request
     ctx["path"] = request.url.path
-    return HTMLResponse(env.get_template(template).render(**ctx), status_code=status)
+    return HTMLResponse(env.get_template(template).render(**ctx), status_code=status,
+                        headers={"Cache-Control": "no-cache"})
 
 
 # --------------------------------------------------------------------------- pages
@@ -151,6 +154,10 @@ async def insurance_csv(request: Request):
                     headers={"Content-Disposition": 'attachment; filename="garage-inventory.csv"'})
 
 
+async def more(request: Request):
+    return render(request, "more.html")
+
+
 async def search(request: Request):
     q = request.query_params.get("q", "").strip()
     hits = repo.search(inventory.get(), q) if q else []
@@ -166,7 +173,8 @@ async def viewer(request: Request):
     kind = "pdf" if ext == ".pdf" else "model" if ext == ".stl" else \
         "image" if ext in repo.IMAGE_EXT else "other"
     return render(request, "viewer.html", rel=rel, name=full.name, kind=kind,
-                  url="/files/" + quote(rel), owner=owner)
+                  url="/files/" + quote(rel), owner=owner,
+                  thumb=f"/thumb/{quote(rel)}?v={int(full.stat().st_mtime)}")
 
 
 # --------------------------------------------------------------------------- files
@@ -197,10 +205,10 @@ async def files(request: Request):
     disp = "inline" if inline and "download" not in request.query_params else "attachment"
     return FileResponse(full, media_type=media,
                         headers={"Content-Disposition": f"{disp}; filename=\"{full.name}\"",
-                                 "Cache-Control": "private, max-age=300"})
+                                 "Cache-Control": "private, no-cache"})
 
 
-THUMB_WIDTHS = (320, 640, 1280)
+THUMB_WIDTHS = (320, 640, 1280, 2048)
 
 
 async def thumb(request: Request):
@@ -218,6 +226,11 @@ async def thumb(request: Request):
     if not out.exists():
         from PIL import Image, ImageOps
         try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+        try:
             out.parent.mkdir(parents=True, exist_ok=True)
             with Image.open(full) as im:
                 im = ImageOps.exif_transpose(im)
@@ -227,15 +240,17 @@ async def thumb(request: Request):
                 tmp.replace(out)
         except OSError:
             return FileResponse(full)
+    # The URL carries ?v=<mtime>, so a changed photo gets a new URL.
     return FileResponse(out, media_type="image/jpeg",
-                        headers={"Cache-Control": "private, max-age=86400"})
+                        headers={"Cache-Control": "private, max-age=31536000, immutable"
+                                 if "v" in request.query_params else "private, no-cache"})
 
 
 # --------------------------------------------------------------------------- admin
 
 async def do_sync(request: Request):
     if sync.git_mode:
-        sync.sync_once()
+        await anyio.to_thread.run_sync(sync.sync_once)
     inventory.invalidate()
     if "application/json" in request.headers.get("accept", ""):
         return JSONResponse(status())
@@ -250,6 +265,21 @@ def status() -> dict:
         "error": sync.last_error or None,
         "tools": len(inventory.get().tools),
     }
+
+
+async def github_webhook(request: Request):
+    """GitHub push webhook: pull right away instead of waiting for a page view."""
+    if not WEBHOOK_SECRET:
+        raise HTTPException(404)
+    body = await request.body()
+    sig = request.headers.get("x-hub-signature-256", "")
+    want = "sha256=" + hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, want):
+        return PlainTextResponse("bad signature", status_code=401)
+    if request.headers.get("x-github-event") == "push":
+        if await anyio.to_thread.run_sync(sync.sync_once):
+            inventory.invalidate()
+    return PlainTextResponse("ok")
 
 
 async def healthz(request: Request):
@@ -294,7 +324,10 @@ async def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
-OPEN_PATHS = ("/login", "/static/", "/healthz", "/manifest.webmanifest")
+OPEN_PATHS = ("/login", "/static/", "/healthz", "/manifest.webmanifest", "/webhook/github")
+# Requests that don't render repo content skip the freshness check.
+NO_FRESH_PATHS = ("/static/", "/thumb/", "/files/", "/healthz", "/manifest.webmanifest",
+                  "/webhook/", "/login", "/logout", "/sync")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -302,6 +335,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if AUTH_PASS and not request.url.path.startswith(OPEN_PATHS):
             if request.session.get("user") != AUTH_USER:
                 return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
+        if request.method == "GET" and not request.url.path.startswith(NO_FRESH_PATHS):
+            # Every page shows the latest commit on GitHub (checked at most
+            # every FRESHNESS_SECONDS; runs off the event loop).
+            await anyio.to_thread.run_sync(sync.ensure_fresh, FRESHNESS_SECONDS)
         resp = await call_next(request)
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
@@ -312,7 +349,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 async def manifest(request: Request):
     return JSONResponse({
         "name": SITE_TITLE, "short_name": SITE_TITLE, "start_url": "/", "display": "standalone",
-        "background_color": "#1b1d21", "theme_color": "#e8590c",
+        "background_color": "#f4f2ee", "theme_color": "#f4f2ee",
         "icons": [{"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}],
     }, media_type="application/manifest+json")
 
@@ -338,6 +375,8 @@ routes = [
     Route("/insurance", insurance),
     Route("/insurance.csv", insurance_csv),
     Route("/search", search),
+    Route("/more", more),
+    Route("/webhook/github", github_webhook, methods=["POST"]),
     Route("/view/{path:path}", viewer),
     Route("/files/{path:path}", files),
     Route("/thumb/{path:path}", thumb),
@@ -349,8 +388,18 @@ routes = [
     Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
 ]
 
+class PageGZip(GZipMiddleware):
+    """Compress pages, not files: PDFs are fetched with byte ranges."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith(("/files/", "/thumb/")):
+            await self.app(scope, receive, send)
+        else:
+            await super().__call__(scope, receive, send)
+
+
 middleware = [
-    Middleware(GZipMiddleware, minimum_size=1024),
+    Middleware(PageGZip, minimum_size=1024),
     Middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="garage_session",
                max_age=60 * 60 * 24 * 30, same_site="lax", https_only=COOKIE_SECURE),
     Middleware(AuthMiddleware),

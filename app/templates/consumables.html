@@ -9,9 +9,9 @@
     <button class="btn" type="button" onclick="print()">Print</button>
   </div>
 </div>
-<p class="muted">Every consumable and replacement part across the garage, with search links at the stores named in each tool's notes. Tick items to build a list; ticks are saved on this device only.</p>
+<p class="muted small">Every consumable and replacement part across the garage, with search links at the stores named in each tool's notes. Tick items to build a list; ticks are saved on this device only.</p>
 
-<input class="filter-input" type="search" placeholder="Filter (e.g. blade, battery, KP2039)…" data-filter=".cons-group .cons" aria-label="Filter consumables">
+<div class="sticky-filter"><input class="filter-input" type="search" placeholder="Filter: blade, battery, KP2039…" data-filter=".cons-group .cons" aria-label="Filter consumables" enterkeyhint="search" autocorrect="off" autocapitalize="off" style="margin:0"></div>
 
 {% for t, items in groups %}
 <section class="panel cons-group">
