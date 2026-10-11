@@ -219,14 +219,19 @@ class RepoSync:
             return
 
         def loop():
+            backoff = 60
             while True:
                 if not (self.path / ".git").exists():
+                    # No clone yet (bad token, GitHub down): retry, backing off to
+                    # SYNC_INTERVAL so a misconfiguration can't hammer GitHub.
                     changed = self.sync_once()
+                    wait = 60 if changed else backoff
+                    backoff = 60 if changed else min(backoff * 2, self.interval)
                 else:
-                    changed = self.ensure_fresh(self.interval)
+                    changed, wait = self.ensure_fresh(self.interval), 60
                 if changed:
                     on_change()
-                self._wake.wait(60)
+                self._wake.wait(wait)
                 self._wake.clear()
 
         threading.Thread(target=loop, name="repo-sync", daemon=True).start()

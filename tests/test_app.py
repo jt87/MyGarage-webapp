@@ -1,6 +1,7 @@
 """Smoke tests against the real repo content (REPO_PATH=..)."""
 
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("REPO_PATH", str(Path(__file__).resolve().parents[2]))
@@ -47,7 +48,10 @@ def test_files_cannot_escape_repo():
 def test_relative_links_rewrite():
     assert repo.rewrite_href("../klein-ncvt-3p/", "tools/klein-mm320", ROOT) == "/tools/klein-ncvt-3p"
     assert repo.rewrite_href("../../tools/ryobi-rts10g/", "projects/x", ROOT) == "/tools/ryobi-rts10g"
-    assert repo.rewrite_href("manual.pdf", "tools/delta-22-540", ROOT) == "/files/tools/delta-22-540/manual.pdf"
+    # Viewable files go to the in-app viewer; others download.
+    assert repo.rewrite_href("manual.pdf", "tools/delta-22-540", ROOT) == "/view/tools/delta-22-540/manual.pdf"
+    assert repo.rewrite_href("arcadeScreenPanel.123dx", "projects/2026-10-arcade-cabinet", ROOT) == \
+        "/files/projects/2026-10-arcade-cabinet/arcadeScreenPanel.123dx"
     assert repo.rewrite_href("https://example.com", "tools/x", ROOT) == "https://example.com"
 
 
@@ -269,3 +273,71 @@ def test_first_run_setup_only_from_home_network(tmp_path, monkeypatch):
     assert not cfg.configured and proxied.status_code == 200
     local = fresh(client=("192.168.1.10", 1)).post("/setup", data=form)
     assert local.status_code == 303 and cfg.configured and cfg.check("me", "longenough")
+
+
+# --------------------------------------------------------------------------- regressions (bug sweep)
+
+def test_check_for_updates_only_redirects_within_the_site():
+    r = fresh_logged_in().post("/sync", headers={"Referer": "https://evil.example/x"})
+    assert r.headers["location"] == "/"
+    r = fresh_logged_in().post("/sync", headers={"Referer": "http://testserver/tools?x=1"})
+    assert r.headers["location"] == "/tools"
+    assert main.safe_next("/\\evil.example") == "/"
+
+
+def test_posts_work_behind_a_proxy_that_rewrites_host():
+    c = fresh_logged_in()
+    hdrs = {"Host": "192.168.1.5:8088", "Origin": "https://garage.example.com"}
+    assert c.post("/sync", headers={**hdrs, "X-Forwarded-Host": "garage.example.com"}).status_code == 303
+    assert c.post("/sync", headers={**hdrs, "Sec-Fetch-Site": "same-origin"}).status_code == 303
+    assert c.post("/sync", headers={**hdrs, "Sec-Fetch-Site": "cross-site"}).status_code == 403
+
+
+def test_browser_session_login_expires_after_12_hours(monkeypatch):
+    import itsdangerous
+    token, _ = main.sessions.issue(remember=False)
+    remembered, _ = main.sessions.issue(remember=True)
+    assert main.sessions.user(token)
+    later = time.time() + auth.SESSION_SECONDS + 60
+    monkeypatch.setattr(itsdangerous.timed.time, "time", lambda: later)
+    monkeypatch.setattr(auth.time, "time", lambda: later)
+    assert main.sessions.user(token) is None
+    assert main.sessions.user(remembered)   # "Remember me" lasts 30 days
+
+
+def test_non_ascii_file_names_download(tmp_path, monkeypatch):
+    d = tmp_path / "tools" / "x-1"
+    d.mkdir(parents=True)
+    (d / "README.md").write_text("# X 1 — Thing\n")
+    (d / "Anleitung – Gerät.pdf").write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(main, "REPO_PATH", tmp_path)
+    r = client.get("/files/tools/x-1/" + main.quote("Anleitung – Gerät.pdf"))
+    assert r.status_code == 200 and "filename*=UTF-8''" in r.headers["content-disposition"]
+
+
+def test_damaged_login_file_is_never_treated_as_new(tmp_path):
+    p = tmp_path / "auth.json"
+    auth.AuthConfig(p).set_credentials("me", "password123")
+    p.write_text("{ truncated")
+    import pytest
+    with pytest.raises(SystemExit):
+        auth.AuthConfig(p)
+
+
+def test_webhook_rejects_huge_bodies(monkeypatch):
+    monkeypatch.setattr(main, "WEBHOOK_SECRET", "s")
+    assert client.post("/webhook/github", content=b"x" * 3_000_000).status_code == 413
+
+
+def test_csv_cells_cannot_become_formulas(monkeypatch):
+    inv = main.inventory.get()
+    monkeypatch.setattr(inv.tools[0], "title", "=HYPERLINK(\"http://x\")")
+    import csv as _csv
+    rows = list(_csv.reader(client.get("/insurance.csv").text.splitlines()))
+    assert rows[1][0].startswith("'=HYPERLINK")
+
+
+def fresh_logged_in():
+    c = fresh()
+    c.post("/login", data={"username": USER, "password": PASSWORD})
+    return c

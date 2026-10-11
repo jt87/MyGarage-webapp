@@ -15,7 +15,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import anyio
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -172,11 +172,18 @@ async def insurance_csv(request: Request):
     w = csv.writer(buf)
     w.writerow(["Tool", "Category", "Model #", "Serial #", "Purchased", "Paid",
                 "Replacement value", "Replacement value details", "Proof of purchase", "Link"])
-    base = str(request.base_url).rstrip("/")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    base = f"{'https' if is_https(request) else 'http'}://{host}"
+
+    def cell(v):
+        v = str(v)
+        return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+
     for t in inv.tools:
-        w.writerow([t.title, t.category, t.model_no, t.serial, t.spec_text.get("purchased", ""),
-                    t.paid_text, t.value_text, t.spec_text.get("replacement value", ""),
-                    "; ".join(f.name for f in t.proofs) or "none", base + t.url])
+        w.writerow([cell(v) for v in (
+            t.title, t.category, t.model_no, t.serial, t.spec_text.get("purchased", ""),
+            t.paid_text, t.value_text, t.spec_text.get("replacement value", ""),
+            "; ".join(f.name for f in t.proofs) or "none")] + [base + t.url])
     w.writerow(["Total", "", "", "", "", "", inv.total_value_text or repo.fmt_money(inv.total_value)])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="mygarage-inventory.csv"'})
@@ -239,12 +246,35 @@ async def files(request: Request):
     media = mimetypes.guess_type(full.name)[0] or "application/octet-stream"
     inline = media.startswith("image/") or media in ("application/pdf", "text/plain")
     disp = "inline" if inline and "download" not in request.query_params else "attachment"
-    return FileResponse(full, media_type=media,
-                        headers={"Content-Disposition": f"{disp}; filename=\"{full.name}\"",
-                                 "Cache-Control": "private, no-cache"})
+    ascii_name = full.name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "")
+    return FileResponse(full, media_type=media, headers={
+        "Content-Disposition": f"{disp}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(full.name)}",
+        "Cache-Control": "private, no-cache"})
 
 
 THUMB_WIDTHS = (320, 640, 1280, 2048)
+
+
+def make_thumb(src: Path, out: Path, w: int) -> bool:
+    from PIL import Image, ImageOps
+    try:
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
+    tmp = out.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with Image.open(src) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((w, w * 2))
+            im.convert("RGB").save(tmp, "JPEG", quality=82, optimize=True, progressive=True)
+        tmp.replace(out)
+        return True
+    except Exception as e:  # unreadable or unsupported image: serve the original
+        logging.getLogger("garage").warning("thumbnail failed for %s: %s", src.name, e)
+        tmp.unlink(missing_ok=True)
+        return False
 
 
 async def thumb(request: Request):
@@ -259,23 +289,8 @@ async def thumb(request: Request):
     st = full.stat()
     key = hashlib.sha1(f"{full}:{st.st_mtime_ns}:{st.st_size}:{w}".encode()).hexdigest()
     out = CACHE_PATH / "thumbs" / key[:2] / f"{key}.jpg"
-    if not out.exists():
-        from PIL import Image, ImageOps
-        try:
-            import pillow_heif
-            pillow_heif.register_heif_opener()
-        except ImportError:
-            pass
-        try:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            with Image.open(full) as im:
-                im = ImageOps.exif_transpose(im)
-                im.thumbnail((w, w * 2))
-                tmp = out.with_suffix(".tmp")
-                im.convert("RGB").save(tmp, "JPEG", quality=82, optimize=True, progressive=True)
-                tmp.replace(out)
-        except OSError:
-            return FileResponse(full)
+    if not out.exists() and not await anyio.to_thread.run_sync(make_thumb, full, out, w):
+        return FileResponse(full)
     # The URL carries ?v=<mtime>, so a changed photo gets a new URL.
     return FileResponse(out, media_type="image/jpeg",
                         headers={"Cache-Control": "private, max-age=31536000, immutable"
@@ -291,7 +306,10 @@ async def do_sync(request: Request):
     inventory.invalidate()
     if "application/json" in request.headers.get("accept", ""):
         return JSONResponse(status())
-    return RedirectResponse(request.headers.get("referer", "/"), status_code=303)
+    ref = urlsplit(request.headers.get("referer", ""))
+    same_site = not ref.netloc or ref.netloc in (request.headers.get("host"),
+                                                 request.headers.get("x-forwarded-host"))
+    return RedirectResponse(safe_next(ref.path) if same_site else "/", status_code=303)
 
 
 def status() -> dict:
@@ -310,6 +328,8 @@ async def github_webhook(request: Request):
     """GitHub push webhook: pull right away instead of waiting for a page view."""
     if not WEBHOOK_SECRET:
         raise HTTPException(404)
+    if int(request.headers.get("content-length") or 0) > 2_000_000:
+        return PlainTextResponse("too large", status_code=413)
     body = await request.body()
     sig = request.headers.get("x-hub-signature-256", "")
     want = "sha256=" + hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
@@ -333,8 +353,22 @@ async def healthz(request: Request):
 
 # --------------------------------------------------------------------------- auth
 
+def is_cross_site(request: Request) -> bool:
+    """True for a form posted from another website."""
+    fetch_site = request.headers.get("sec-fetch-site")
+    if fetch_site:                       # Safari 16.4+, Chrome, Firefox
+        return fetch_site == "cross-site"
+    origin = request.headers.get("origin")
+    if not origin or origin == "null":
+        return False
+    hosts = {request.headers.get("host"), *request.headers.get("x-forwarded-host", "").split(",")}
+    return urlsplit(origin).netloc not in {h.strip() for h in hosts if h}
+
+
 def safe_next(value: str | None) -> str:
-    return value if value and value.startswith("/") and not value.startswith("//") else "/"
+    ok = (value and value.startswith("/") and not value.startswith(("//", "/\\"))
+          and value.isprintable())
+    return value if ok else "/"
 
 
 def is_https(request: Request) -> bool:
@@ -503,7 +537,10 @@ async def _basic_ok_for(request: Request) -> bool:
     except (ValueError, UnicodeDecodeError):
         return False
     if await anyio.to_thread.run_sync(auth_cfg.check, user, pw):
-        _basic_ok[digest] = time.time() + 600
+        now = time.time()
+        for k in [k for k, exp in _basic_ok.items() if exp < now]:
+            del _basic_ok[k]
+        _basic_ok[digest] = now + 600
         throttle.succeed(key)
         return True
     throttle.fail(key)
@@ -535,10 +572,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if not path.startswith(OPEN_PATHS):
             # Cross-site form posts are refused (SameSite cookies already block most).
-            origin = request.headers.get("origin")
-            if request.method == "POST" and origin and origin != "null":
-                if origin.split("://", 1)[-1] != request.headers.get("host", ""):
-                    return PlainTextResponse("Cross-site request refused", status_code=403)
+            if request.method == "POST" and is_cross_site(request):
+                return PlainTextResponse("Cross-site request refused", status_code=403)
             if not auth_cfg.configured:
                 if path != "/setup":
                     return RedirectResponse("/setup", status_code=303)
