@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{% block title %}{{ site_title }}{% endblock %}</title>
-<meta name="theme-color" content="#f4f2ee" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141518" media="(prefers-color-scheme: dark)">
+<title>{% if title and title != site_title %}{{ title }} · {% endif %}{{ site_title }}</title>
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
+<meta name="format-detection" content="telephone=yes">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -14,56 +15,60 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="{{ site_title }}">
-<link rel="stylesheet" href="/static/style.css?v=3">
-{% block head %}{% endblock %}
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 {% set tabs = [
-  ("/", "Home", "home"),
-  ("/tools", "Tools", "wrench"),
-  ("/consumables", "Shopping", "cart"),
-  ("/projects", "Projects", "folder"),
-  ("/more", "More", "more"),
+  ("garage", "/", site_title, "garage"),
+  ("tools", "/tools", "Tools", "wrench"),
+  ("shopping", "/consumables", "Shopping", "checklist"),
+  ("projects", "/projects", "Projects", "folder"),
+  ("search", "/search", "Search", "search"),
 ] %}
-{% set section = "/" ~ path.split("/")[1] %}
-{% set active_tab = "/" if path == "/" else section if section in ["/tools", "/consumables", "/projects"] else "/more" if section in ["/more", "/insurance", "/reference", "/search"] else "" %}
-<header class="topbar">
-  <a class="brand" href="/"><img src="/static/icon.svg" alt="" width="28" height="28">{{ site_title }}</a>
-  <nav class="nav" aria-label="Main">
-    {% for href, label in [("/tools","Tools"),("/consumables","Shopping"),("/projects","Projects"),("/insurance","Insurance"),("/reference","Reference")] %}
-    <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
+<div class="app">
+  <aside class="sidebar" aria-label="Sections">
+    <a class="sidebar-title" href="/"><img src="/static/apple-touch-icon.png" alt="">{{ site_title }}</a>
+    <form class="searchbar" action="/search" role="search">
+      <svg aria-hidden="true"><use href="/static/icons.svg#search"/></svg>
+      <input type="search" name="q" placeholder="Search" value="{{ q or '' }}" aria-label="Search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
+    </form>
+    {% for key, href, label, icon in tabs[:4] %}
+    <a class="side-item" href="{{ href }}" {% if tab == key and path == href %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>{{ 'Overview' if key == 'garage' else label }}</a>
     {% endfor %}
-  </nav>
-  <form class="search" action="/search" role="search">
-    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input type="search" name="q" placeholder="Search tools, parts, manuals" value="{{ q or '' }}" aria-label="Search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
-  </form>
-</header>
+    <div class="side-head">Records</div>
+    <a class="side-item" href="/insurance" {% if path.startswith('/insurance') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#shield"/></svg>Insurance</a>
+    <a class="side-item" href="/reference" {% if path.startswith('/reference') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#book"/></svg>Reference</a>
+    <p class="side-foot t-footnote secondary">{% include "_sync_status.html" %}</p>
+  </aside>
 
-<main class="wrap">
-{% block content %}{% endblock %}
-</main>
-
-<footer class="footer wrap">
-  <span>
-  {% if sync.git_mode %}
-    {% if sync.last_error %}<span class="warn">Couldn't reach GitHub ({{ sync.last_error }}). Showing the copy from <code>{{ sync.head[:7] }}</code>.</span>
-    {% else %}Up to date with GitHub{% if sync.head %} · <code>{{ sync.head[:7] }}</code>{% endif %}{% endif %}
-  {% else %}Reading from a mounted folder{% endif %}
-  </span>
-  <form method="post" action="/sync"><button class="link">Refresh now</button></form>
-  {% if auth_enabled %}<form method="post" action="/logout"><button class="link">Sign out</button></form>{% endif %}
-</footer>
+  <div class="main-col">
+    <header class="navbar{% if not large %} always{% endif %}" data-navbar>
+      <div class="navbar-inner">
+        <div class="nav-left">
+          {% if back %}<a class="back" href="{{ back[0] }}"><svg aria-hidden="true"><use href="/static/icons.svg#chevron-left"/></svg><span>{{ back[1] }}</span></a>{% endif %}
+        </div>
+        <div class="nav-title">{{ title }}</div>
+        <div class="nav-right">{% block nav_actions %}{% endblock %}</div>
+      </div>
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
 
 <nav class="tabbar" aria-label="Sections">
-  {% for href, label, icon in tabs %}
-  <a href="{{ href }}" {% if active_tab == href %}aria-current="page"{% endif %}>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>
+  {% for key, href, label, icon in tabs %}
+  <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}{% if key == 'garage' and tab == key %}-fill{% endif %}"/></svg>
     <span>{{ label }}</span>
   </a>
   {% endfor %}
 </nav>
-<script src="/static/app.js?v=3" defer></script>
+
+<dialog class="sheet" data-sheet aria-label="Options"></dialog>
+<div class="toast" data-toast role="status" aria-live="polite"></div>
+<script src="/static/app.js?v=4" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

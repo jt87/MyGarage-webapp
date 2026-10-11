@@ -1,21 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Projects · {{ site_title }}{% endblock %}
+{% from "macros.html" import icon %}
+{% set large = true %}
 {% block content %}
-<h1>Projects</h1>
-<div class="grid">
-  {% for p in inv.projects %}
-  <a class="card project-card" href="{{ p.url }}">
-    <div class="card-body">
-      <span class="chip chip-{{ p.status|lower|replace(' ','-') }}">{{ p.status }}</span>
-      <h3>{{ p.title }}</h3>
-      <p class="muted">{{ p.goal|truncate(180) }}</p>
-      <p class="meta">
-        <span>{{ p.slug[:7] }}</span>
-        <span>{{ p.files|length }} file{{ '' if p.files|length == 1 else 's' }}</span>
-        {% if p.tools %}<span>{{ p.tools|length }} tool{{ '' if p.tools|length == 1 else 's' }}</span>{% endif %}
-      </p>
-    </div>
-  </a>
-  {% else %}<p class="muted">No projects yet.</p>{% endfor %}
+<div class="large-title"><h1>Projects</h1></div>
+<div class="section">
+  <div class="group">
+    {% for p in inv.projects %}
+    <a class="row has-icon" href="{{ p.url }}">
+      <span class="tile" style="--tile: var(--{{ 'green' if p.status|lower in ('done','finished') else 'orange' if p.status|lower == 'in progress' else 'indigo' }})">{{ icon("folder") }}</span>
+      <span class="row-body">
+        <span class="row-title clip">{{ p.title }}</span>
+        <span class="row-sub clip">{{ p.status|capitalize }}{% if p.started %} · Started {{ p.started }}{% endif %} · {{ p.files|length }} file{{ '' if p.files|length == 1 else 's' }}</span>
+      </span>
+      <span class="chev"></span>
+    </a>
+    {% else %}
+    <div class="row secondary">No projects yet.</div>
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}

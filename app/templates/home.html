@@ -1,38 +1,71 @@
 {% extends "base.html" %}
-{% from "macros.html" import tool_card %}
+{% from "macros.html" import icon, tile, nav_row %}
+{% set large = true %}
 {% block content %}
-<section class="stats">
-  <a class="stat" href="/tools"><strong>{{ inv.tools|length }}</strong><span>Tools</span></a>
-  <a class="stat" href="/insurance"><strong>{{ inv.total_value_text.split(' (')[0] if inv.total_value_text else money(inv.total_value) }}</strong><span>Replacement value{% if inv.refreshed %} · {{ inv.refreshed }}{% endif %}</span></a>
-  <a class="stat" href="/consumables"><strong>{{ inv.consumables|length }}</strong><span>Consumables tracked</span></a>
-  <a class="stat" href="/projects"><strong>{{ active|length }}</strong><span>Active projects</span></a>
-</section>
+<div class="large-title"><h1>{{ site_title }}</h1></div>
 
-<section>
-  <div class="section-head"><h2>Tools</h2><a href="/tools">All tools →</a></div>
-  <div class="grid">
-    {% for t in inv.tools %}{{ tool_card(t) }}{% endfor %}
-  </div>
-</section>
-
-<div class="two-col">
-  <section>
-    <div class="section-head"><h2>Projects</h2><a href="/projects">All →</a></div>
-    {% for p in active %}
-    <a class="row-link" href="{{ p.url }}">
-      <span class="chip chip-{{ p.status|lower|replace(' ','-') }}">{{ p.status }}</span>
-      <strong>{{ p.title }}</strong>
-    </a>
-    {% else %}<p class="muted">No active projects.</p>{% endfor %}
-  </section>
-  <section>
-    <div class="section-head"><h2>Recent maintenance</h2></div>
-    {% for e in recent %}
-    <a class="row-link" href="/tools/{{ e.slug }}#maintenance-log">
-      <span class="date">{{ e.date }}</span>
-      <span><strong>{{ e.title }}</strong><br><span class="muted">{{ e.what|truncate(120) }}</span></span>
-    </a>
-    {% else %}<p class="muted">Nothing logged yet.</p>{% endfor %}
-  </section>
+<div class="cards">
+  <a class="card" href="/tools" style="--tile: var(--orange)">
+    <span class="card-head">{{ icon("wrench") }}Tools<span class="chev"></span></span>
+    <span class="card-value">{{ inv.tools|length }}</span>
+  </a>
+  <a class="card" href="/insurance" style="--tile: var(--green)">
+    <span class="card-head">{{ icon("shield") }}Value<span class="chev"></span></span>
+    <span class="card-value">{{ inv.total_display }}</span>
+  </a>
+  <a class="card" href="/consumables" style="--tile: var(--blue)">
+    <span class="card-head">{{ icon("checklist") }}Parts<span class="chev"></span></span>
+    <span class="card-value">{{ inv.consumables|length }}<small>items</small></span>
+  </a>
+  <a class="card" href="/projects" style="--tile: var(--indigo)">
+    <span class="card-head">{{ icon("folder") }}Projects<span class="chev"></span></span>
+    <span class="card-value">{{ active|length }}<small>active</small></span>
+  </a>
 </div>
+
+<div class="section-header prominent"><span>Tools</span><a href="/tools">See All</a></div>
+<div class="shelf">
+  {% for t in inv.tools %}
+  <a href="{{ t.url }}">
+    {% if t.cover %}<img src="{{ t.cover.thumb }}&w=640" alt="" loading="lazy">{% else %}<span class="noimg">{{ icon("wrench") }}</span>{% endif %}
+    <strong>{{ t.model_name }}</strong><span>{{ t.subtitle }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if recent %}
+<div class="section-header prominent"><span>Recent Activity</span></div>
+<div class="section">
+  <div class="group">
+    {% for e in recent %}
+    <a class="row" href="/tools/{{ e.slug }}#log">
+      <span class="row-body"><span class="row-title clip">{{ e.title }}</span><span class="row-sub two">{{ e.what }}</span></span>
+      <span class="row-detail t-subhead">{{ e.date }}</span>
+      <span class="chev"></span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="section">
+  <div class="group">
+    {{ nav_row("/insurance", "Insurance", "shield", "green", inv.total_display) }}
+    {{ nav_row("/reference", "Reference", "book", "brown") }}
+  </div>
+</div>
+
+<div class="section">
+  <div class="group">
+    <form method="post" action="/sync"><button class="row action has-icon">{{ tile("refresh", "blue") }}<span class="row-body">Check for Updates</span></button></form>
+    {% if github_repo %}<a class="row action has-icon" href="https://github.com/{{ github_repo }}" target="_blank" rel="noopener">{{ tile("github", "gray") }}<span class="row-body">Open on GitHub</span></a>{% endif %}
+  </div>
+  <p class="section-footer">{% include "_sync_status.html" %}{% if sync.git_mode %}. {{ sync.checks_today }} GitHub check{{ '' if sync.checks_today == 1 else 's' }} today.{% endif %}</p>
+</div>
+
+{% if auth_enabled %}
+<div class="section">
+  <div class="group"><form method="post" action="/logout"><button class="row action destructive" style="justify-content:center">Sign Out</button></form></div>
+</div>
+{% endif %}
 {% endblock %}

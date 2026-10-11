@@ -1,17 +1,15 @@
 {% extends "base.html" %}
-{% block title %}{{ page.title }} · {{ site_title }}{% endblock %}
+{% from "macros.html" import nav_row %}
+{% set large = true %}
 {% block content %}
-<div class="project-layout">
-  <article class="panel prose">
-    <h1>{{ page.title }}</h1>
-    {{ page.html|safe }}
-  </article>
-  <aside class="panel">
-    <h2>Reference</h2>
-    {% for r in inv.references %}
-    <a class="row-link" href="{{ r.url if r.slug != 'index' else '/reference' }}" {% if r.slug == page.slug %}aria-current="page"{% endif %}>{{ r.title }}</a>
-    {% endfor %}
-    <a class="row-link" href="/consumables">Shopping list (interactive)</a>
-  </aside>
+<div class="large-title"><h1>{{ page.title }}</h1></div>
+{% if page.slug == "index" %}
+<div class="section">
+  <div class="group">
+    {% for r in inv.references if r.slug != "index" %}{{ nav_row(r.url, r.title, "book", "brown") }}{% endfor %}
+    {{ nav_row("/consumables", "Shopping List", "checklist", "blue") }}
+  </div>
 </div>
+{% endif %}
+<div class="section"><div class="prose">{{ page.html|safe }}</div></div>
 {% endblock %}

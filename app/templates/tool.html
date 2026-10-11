@@ -1,126 +1,111 @@
 {% extends "base.html" %}
-{% from "macros.html" import file_list, buy %}
-{% block title %}{{ t.model_name }} · {{ site_title }}{% endblock %}
+{% from "macros.html" import icon, file_rows, kv, cons_row, tool_row %}
+{% block nav_actions %}
+<button class="nav-btn" type="button" data-share data-share-title="{{ t.title }}" aria-label="Share">{{ icon("share") }}</button>
+{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/tools">Tools</a> / <a href="/tools?category={{ t.category|q }}">{{ t.category }}</a></nav>
-
-<div class="tool-hero">
-  {% if t.photos %}
-  <div class="gallery" data-gallery>
-    <div class="slides" tabindex="0" aria-label="Photos">
-      {% for f in t.photos %}
-      <button type="button" class="slide" data-full="{{ f.thumb }}&w=2048" aria-label="Enlarge {{ f.label }}">
-        <img src="{{ f.thumb }}&w=1280"
-             srcset="{{ f.thumb }}&w=640 640w, {{ f.thumb }}&w=1280 1280w, {{ f.thumb }}&w=2048 2048w"
-             sizes="(max-width: 860px) 100vw, 600px" alt="{{ f.label }}" {% if not loop.first %}loading="lazy"{% endif %}>
-      </button>
-      {% endfor %}
-    </div>
-    {% if t.photos|length > 1 %}
-    <span class="slide-count" aria-hidden="true"><span data-current>1</span> / {{ t.photos|length }}</span>
-    <div class="gallery-strip">
-      {% for f in t.photos %}
-      <button type="button" data-index="{{ loop.index0 }}" {% if loop.first %}aria-pressed="true"{% endif %} aria-label="Show {{ f.label }}">
-        <img src="{{ f.thumb }}&w=320" alt="" loading="lazy">
-      </button>
-      {% endfor %}
-    </div>
-    {% endif %}
+{% if t.photos %}
+<div class="gallery" data-gallery>
+  <div class="slides" aria-label="Photos">
+    {% for f in t.photos %}
+    <button type="button" class="slide" data-full="{{ f.thumb }}&w=2048" aria-label="View {{ f.label }}">
+      <img src="{{ f.thumb }}&w=1280" srcset="{{ f.thumb }}&w=640 640w, {{ f.thumb }}&w=1280 1280w, {{ f.thumb }}&w=2048 2048w"
+           sizes="(max-width: 720px) 100vw, 720px" alt="{{ f.label }}" {% if not loop.first %}loading="lazy"{% endif %}>
+    </button>
+    {% endfor %}
   </div>
-  {% else %}
-  <div class="gallery-empty"><span class="placeholder">{{ t.brand[:1] }}</span><p class="muted small">No photo yet. Add <code>photo.jpg</code> (or an iPhone <code>.heic</code>) to <code>tools/{{ t.slug }}/</code>.</p></div>
-  {% endif %}
+  {% if t.photos|length > 1 %}<div class="dots" aria-hidden="true">{% for f in t.photos %}<i {% if loop.first %}aria-current="true"{% endif %}></i>{% endfor %}</div>{% endif %}
+</div>
+{% endif %}
 
-  <div class="hero-info">
-    <span class="chip">{{ t.category }}</span>
-    <h1>{{ t.model_name }}</h1>
-    {% if t.subtitle %}<p class="lead">{{ t.subtitle }}</p>{% endif %}
-
-    <div class="quick">
-      {% for m in t.manuals %}
-      <a class="btn btn-primary" href="/view/{{ m.path|q }}">{{ 'Manual' if loop.length == 1 else m.label }}</a>
-      {% endfor %}
-      {% if t.consumables %}<a class="btn" href="#consumables">Parts &amp; consumables</a>{% endif %}
-      {% if t.proofs %}<a class="btn" href="#purchase">Receipt</a>{% endif %}
-    </div>
-
-    <dl class="kv kv-compact">
-      {% if t.model_no %}<dt>Model #</dt><dd>{{ t.model_no }}</dd>{% endif %}
-      {% if t.serial %}<dt>Serial #</dt><dd>{{ t.serial.split('. ')[0] }}</dd>{% endif %}
-      {% if t.value_text %}<dt>Replacement</dt><dd>{{ t.value_text }}</dd>{% endif %}
-      {% if t.paid_text %}<dt>Paid</dt><dd>{{ t.paid_text }}</dd>{% endif %}
-    </dl>
+<div class="hero">
+  <h1 data-title>{{ t.model_name }}</h1>
+  {% if t.subtitle %}<p class="t-subhead secondary">{{ t.subtitle }}</p>{% endif %}
+  <div class="chips">
+    <a class="pill tinted" style="--tile: var(--orange)" href="/tools">{{ t.category }}</a>
+    {% if t.value_text %}<span class="pill tinted" style="--tile: var(--green)">{{ t.value_text }}</span>{% endif %}
+    {% if not t.proofs %}<span class="pill">No receipt</span>{% endif %}
   </div>
 </div>
 
-<nav class="jump" aria-label="On this page">
-  <a href="#specs">Specs</a>
-  <a href="#purchase">Purchase</a>
-  {% if t.consumables %}<a href="#consumables">Parts</a>{% endif %}
-  <a href="#documents">Docs</a>
-  {% for title, html in t.sections_html %}<a href="#{{ title|lower|replace(' & ','-')|replace(' ','-') }}">{{ title.split(' ')[0] }}</a>{% endfor %}
-  {% if t.projects %}<a href="#projects">Projects</a>{% endif %}
-</nav>
+<div class="actions-row">
+  {% if t.manuals %}<a class="action-btn" href="/view/{{ t.manuals[0].path|q }}">{{ icon("book") }}Manual</a>{% endif %}
+  {% if t.consumables %}<a class="action-btn" href="#parts">{{ icon("cart") }}Parts</a>{% endif %}
+  <a class="action-btn" href="#purchase">{{ icon("receipt") }}{{ 'Receipt' if t.proofs else 'Purchase' }}</a>
+  {% if t.documents or t.manuals|length > 1 or t.other_files %}<a class="action-btn" href="#documents">{{ icon("doc") }}Docs</a>{% endif %}
+</div>
 
-<section class="panel" id="specs">
-  <h2>Specifications</h2>
-  <dl class="kv">
-    {% for label, html in t.specs %}<dt>{{ label }}</dt><dd>{{ html|safe }}</dd>{% endfor %}
-  </dl>
-</section>
+<div class="section" id="details">
+  <div class="section-header">Details</div>
+  <div class="group">
+    {% for label, html in t.specs %}{{ kv(label, html) }}{% endfor %}
+  </div>
+</div>
 
-<section class="panel" id="purchase">
-  <h2>Purchase &amp; insurance</h2>
-  <dl class="kv">
-    {% if t.purchased_html %}<dt>Purchased</dt><dd>{{ t.purchased_html|safe }}</dd>{% endif %}
-    {% if t.paid_text %}<dt>Paid</dt><dd>{{ t.paid_text }}</dd>{% endif %}
-    {% if t.replacement_html %}<dt>Replacement value</dt><dd>{{ t.replacement_html|safe }}</dd>{% endif %}
-  </dl>
-  <h3>Proof of purchase</h3>
-  {{ file_list(t.proofs, "None on file. Add a scan or photo named like receipt.pdf or receipt-2026-10-09.jpg to tools/" ~ t.slug ~ "/.") }}
-</section>
+<div class="section" id="purchase">
+  <div class="section-header">Purchase &amp; Insurance</div>
+  <div class="group">
+    {% if t.purchased_html %}{{ kv("Purchased", t.purchased_html) }}{% endif %}
+    {% if t.paid_text %}{{ kv("Paid", t.paid_text|e) }}{% endif %}
+    {% if t.replacement_html %}{{ kv("Replacement Value", t.replacement_html) }}{% endif %}
+    {{ file_rows(t.proofs) }}
+  </div>
+  {% if not t.proofs %}<p class="section-footer">No proof of purchase on file. Add a scan or photo named <code>receipt.pdf</code> or <code>receipt.jpg</code> to this tool's folder.</p>{% endif %}
+</div>
 
 {% if t.consumables %}
-<section class="panel" id="consumables">
-  <h2>Consumables &amp; parts</h2>
-  <div class="cons-list">
-    {% for c in t.consumables %}
-    <article class="cons">
-      <div class="cons-main">
-        <h3>{{ c.item_html|safe }}</h3>
-        <p>{{ c.spec_html|safe }}</p>
-        <p class="muted small">Where: {{ c.where_html|safe }}{% if c.price %} · <strong>{{ c.price_html|safe }}</strong>{% endif %}</p>
-      </div>
-      {{ buy(c) }}
-    </article>
-    {% endfor %}
+<div class="section" id="parts">
+  <div class="section-header">Parts &amp; Consumables</div>
+  <div class="group">
+    {% for c in t.consumables %}{{ cons_row(c) }}{% endfor %}
   </div>
-  {% if t.consumables_notes_html %}<div class="prose">{{ t.consumables_notes_html|safe }}</div>{% endif %}
-</section>
+  {% if t.consumables_notes_html %}<div class="section-footer">{{ t.consumables_notes_html|striptags }}</div>{% endif %}
+</div>
 {% endif %}
 
-<section class="panel" id="documents">
-  <h2>Manuals &amp; documents</h2>
-  {{ file_list(t.manuals + t.documents + t.other_files, "No documents yet.") }}
-</section>
+{% set docs = t.manuals + t.documents + t.other_files %}
+{% if docs %}
+<div class="section" id="documents">
+  <div class="section-header">Manuals &amp; Documents</div>
+  <div class="group">{{ file_rows(docs) }}</div>
+</div>
+{% endif %}
 
 {% for title, html in t.sections_html %}
-<section class="panel prose" id="{{ title|lower|replace(' & ','-')|replace(' ','-') }}">
-  <h2>{{ title }}</h2>
-  {{ html|safe }}
-</section>
+<div class="section" id="{{ title|lower|replace(' & ','-')|replace(' ','-') }}">
+  <div class="section-header">{{ title }}</div>
+  <div class="prose">{{ html|safe }}</div>
+</div>
 {% endfor %}
 
+{% if t.log %}
+<div class="section" id="log">
+  <div class="section-header">Maintenance Log</div>
+  <div class="group">
+    {% for e in t.log %}
+    <div class="row selectable"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>
+    {% endfor %}
+  </div>
+  {% if t.log_notes_html %}<div class="section-footer">{{ t.log_notes_html|striptags }}</div>{% endif %}
+</div>
+{% endif %}
+
 {% if t.projects %}
-<section class="panel" id="projects">
-  <h2>Used in projects</h2>
-  {% for slug, title in t.projects %}<a class="row-link" href="/projects/{{ slug }}">{{ title }}</a>{% endfor %}
-</section>
+<div class="section">
+  <div class="section-header">Used In</div>
+  <div class="group">
+    {% for slug, title in t.projects %}
+    <a class="row has-icon" href="/projects/{{ slug }}"><span class="tile" style="--tile: var(--indigo)">{{ icon("folder") }}</span><span class="row-body clip">{{ title }}</span><span class="chev"></span></a>
+    {% endfor %}
+  </div>
+</div>
 {% endif %}
 
 {% if github_repo %}
-<p class="edit-link"><a href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a></p>
+<div class="section">
+  <div class="group"><a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span>{{ icon("pencil", "tint-ic") }}</a></div>
+</div>
 {% endif %}
 
-<dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button aria-label="Close">×</button></form><img alt=""></dialog>
+<dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button class="close" aria-label="Close">✕</button></form><img alt=""></dialog>
 {% endblock %}
