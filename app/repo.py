@@ -40,7 +40,7 @@ def rewrite_href(href: str, base_dir: str, root: Path) -> str:
     """Map a link written relative to a README to a URL inside the web app.
 
     `base_dir` is the README's folder relative to the repo root (e.g.
-    "tools/delta-22-540"). Absolute URLs, anchors and mailto: pass through.
+    "tools/acme-ts10"). Absolute URLs, anchors and mailto: pass through.
     """
     if not href or href.startswith("#"):
         return href
