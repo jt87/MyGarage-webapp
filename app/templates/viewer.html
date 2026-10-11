@@ -1,28 +1,40 @@
 {% extends "base.html" %}
 {% block title %}{{ name }} · {{ site_title }}{% endblock %}
 {% block content %}
-<div class="section-head viewer-head">
-  <nav class="crumbs">{% if owner %}<a href="{{ owner[0] }}">← {{ owner[1] }}</a>{% endif %}</nav>
+<div class="viewer-head">
+  {% if owner %}<a class="back" href="{{ owner[0] }}">‹ {{ owner[1].split(' — ')[0] }}</a>{% endif %}
+  <h1 class="viewer-title">{{ name }}</h1>
   <div class="actions">
-    <a class="btn" href="{{ url }}" target="_blank" rel="noopener">Open full screen</a>
-    <a class="btn btn-primary" href="{{ url }}?download">Download</a>
+    <a class="btn btn-sm" href="{{ url }}" target="_blank" rel="noopener">Open in Safari viewer</a>
+    <a class="btn btn-sm" href="{{ url }}?download">Download</a>
   </div>
 </div>
-<h1 class="viewer-title">{{ name }}</h1>
 {% if kind == "pdf" %}
-  <iframe class="viewer pdf" src="{{ url }}#view=FitH" title="{{ name }}"></iframe>
-  <p class="muted small">PDF not showing? Use “Open full screen”.</p>
+  <div class="pdf-toolbar" data-pdf-toolbar hidden>
+    <label class="pdf-pageno">Page <input type="number" inputmode="numeric" min="1" value="1" data-page-input aria-label="Page number"> / <span data-page-count>…</span></label>
+    <span class="pdf-zoom">
+      <button class="btn btn-sm" type="button" data-zoom="-1" aria-label="Zoom out">−</button>
+      <button class="btn btn-sm" type="button" data-zoom="0" data-zoom-label>Fit</button>
+      <button class="btn btn-sm" type="button" data-zoom="1" aria-label="Zoom in">+</button>
+    </span>
+  </div>
+  <div class="pdf" id="pdf" data-src="{{ url }}">
+    <p class="muted pdf-loading">Loading {{ name }}…</p>
+  </div>
 {% elif kind == "image" %}
-  <a href="{{ url }}"><img class="viewer-img" src="{{ url }}" alt="{{ name }}"></a>
+  <a href="{{ thumb }}&w=2048" target="_blank" rel="noopener"><img class="viewer-img" src="{{ thumb }}&w=2048" alt="{{ name }}"></a>
 {% elif kind == "model" %}
   <div class="viewer model" id="stl" data-src="{{ url }}"><p class="muted">Loading 3D model…</p></div>
-  <p class="muted small">Drag to rotate, scroll or pinch to zoom.</p>
+  <p class="muted small">Drag to rotate, pinch to zoom.</p>
 {% else %}
   <p>This file type can't be previewed. <a href="{{ url }}?download">Download {{ name }}</a>.</p>
 {% endif %}
 {% endblock %}
 {% block scripts %}
-{% if kind == "model" %}
+{% if kind == "pdf" %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="/static/pdfview.js?v=3" defer></script>
+{% elif kind == "model" %}
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module" src="/static/stl.js"></script>
 {% endif %}

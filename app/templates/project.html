@@ -21,7 +21,7 @@
     {% if used %}
     <section class="panel">
       <h2>Tools</h2>
-      {% for t in used %}<a class="row-link" href="{{ t.url }}">{% if t.cover %}<img class="mini" src="{{ t.cover.thumb }}?w=320" alt="">{% endif %}<span><strong>{{ t.model_name }}</strong><br><span class="muted small">{{ t.subtitle }}</span></span></a>{% endfor %}
+      {% for t in used %}<a class="row-link" href="{{ t.url }}">{% if t.cover %}<img class="mini" src="{{ t.cover.thumb }}&w=320" alt="">{% endif %}<span><strong>{{ t.model_name }}</strong><br><span class="muted small">{{ t.subtitle }}</span></span></a>{% endfor %}
     </section>
     {% endif %}
   </aside>

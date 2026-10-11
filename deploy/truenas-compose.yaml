@@ -10,11 +10,14 @@ services:
       - "8088:8000"            # http://<truenas-ip>:8088 on your LAN
     environment:
       SITE_TITLE: Garage
-      # Where the content comes from. The app clones this repo and pulls every SYNC_INTERVAL seconds.
+      # Where the content comes from. Every page view checks GitHub for a newer
+      # commit (at most every FRESHNESS_SECONDS) and pulls it before showing the page.
       GIT_REPO_URL: https://github.com/your-name/your-data-repo.git
       GIT_BRANCH: main
       GIT_TOKEN: CHANGE_ME     # fine-grained GitHub token: this repo only, Contents = Read-only
-      SYNC_INTERVAL: "300"
+      FRESHNESS_SECONDS: "10"
+      SYNC_INTERVAL: "60"      # background pull, so the first page view after a push is fast
+      WEBHOOK_SECRET: CHANGE_ME  # optional: GitHub push webhook for instant pulls (see README)
       GITHUB_REPO: your-name/your-data-repo   # adds "Edit" links to GitHub; remove to hide them
       # Sign-in. Leave both set unless your reverse proxy already does auth.
       AUTH_USERNAME: alex

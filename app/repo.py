@@ -15,7 +15,8 @@ from urllib.parse import quote, urlsplit
 
 from markdown_it import MarkdownIt
 
-IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+# HEIC/HEIF is what an iPhone camera saves; thumbnails convert it to JPEG.
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
 MODEL_EXT = {".stl"}
 PROOF_RE = re.compile(r"receipt|invoice|proof|order|purchase|bill-of-sale", re.I)
 MANUAL_RE = re.compile(r"manual|guide|quick-?start|instructions", re.I)
@@ -186,6 +187,7 @@ class FileItem:
     path: str  # relative to repo root
     size: int
     kind: str  # image | pdf | model | other
+    mtime: int = 0
 
     @property
     def url(self) -> str:
@@ -193,7 +195,8 @@ class FileItem:
 
     @property
     def thumb(self) -> str:
-        return "/thumb/" + quote(self.path)
+        """JPEG thumbnail URL; append "&w=<px>". Versioned so it can be cached."""
+        return f"/thumb/{quote(self.path)}?v={self.mtime}"
 
     @property
     def ext(self) -> str:
@@ -226,7 +229,8 @@ def folder_files(root: Path, rel: str) -> list[FileItem]:
             else "model" if ext in MODEL_EXT
             else "other"
         )
-        out.append(FileItem(p.name, f"{rel}/{p.name}", p.stat().st_size, kind))
+        st = p.stat()
+        out.append(FileItem(p.name, f"{rel}/{p.name}", st.st_size, kind, int(st.st_mtime)))
     return out
 
 
@@ -644,7 +648,7 @@ def load_project(root: Path, slug: str, r: Renderer) -> Project:
     title, preamble, sections = split_sections(raw)
 
     def field_of(name):
-        m = re.search(rf"^{name}:\s*(.*)$", preamble, re.M | re.I)
+        m = re.search(rf"^{name}:[ \t]*(.*)$", preamble, re.M | re.I)
         return m.group(1).strip() if m else ""
 
     status = field_of("Status") or "unknown"

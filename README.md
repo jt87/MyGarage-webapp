@@ -2,7 +2,9 @@
 
 A read-only website for this repo: browse tools with photos and specs, open manuals and other documents, follow buy links for consumables, view proof of purchase, print an insurance inventory, and read project plans (including a 3D viewer for STL files).
 
-The repo stays the source of truth. The app clones it from GitHub and pulls every few minutes, so editing a README or adding a file on GitHub shows up on the site without redeploying anything.
+The repo stays the source of truth, and the site always shows its latest commit. Before rendering a page, the app asks GitHub whether the branch has moved (one quick `git ls-remote`, at most every 10 seconds) and pulls first if it has. A background pull every minute and an optional GitHub webhook keep that pull ready ahead of time. Editing a README or adding a file on GitHub shows up on the next page load, with no redeploy. If GitHub can't be reached, the site keeps showing the last copy and says so in the footer.
+
+It's built for Safari on iPhone first, then iPad and Mac: a bottom tab bar on iPhone, swipeable edge-to-edge photos, a built-in PDF reader (Safari can't scroll PDFs inside a page, and a Home Screen app has no back button out of a raw PDF), 44-point tap targets, safe-area support for the notch and home indicator, and light/dark mode. iPhone `.heic` photos work as tool photos. When the app comes back to the foreground after a minute or more, it reloads so it never shows a stale page.
 
 ## What's where
 
@@ -35,6 +37,7 @@ You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docke
 3. **Create a dataset** for the app's data, e.g. `tank/apps/garage`, and give the `apps` user (uid 568) full control of it. It only holds a clone of the repo and a thumbnail cache, so it doesn't need snapshots.
 4. **Install.** Apps → Discover Apps → ⋮ (top right) → Install via YAML. Name it `garage` and paste [`deploy/truenas-compose.yaml`](deploy/truenas-compose.yaml), filling in each `CHANGE_ME`: the token, a password, a random `SECRET_KEY` (run `openssl rand -hex 32` in a Mac Terminal) and the dataset path.
 5. Open `http://<truenas-ip>:8088` and sign in.
+6. **Optional, for instant updates:** once the site is on your domain, add a webhook on GitHub (repo → Settings → Webhooks → Add webhook). Payload URL: `https://garage.example.com/webhook/github`, content type `application/json`, secret: the same value as `WEBHOOK_SECRET`, events: just the push event. Without it, pages still check GitHub on every load; the webhook only saves that first page view a moment of waiting.
 
 To update the app later, open it in Apps and choose Update (or Pull Image, then restart) after a new image is built.
 
@@ -53,7 +56,7 @@ Once it's only reached over HTTPS, set `COOKIE_SECURE: "true"` in the YAML.
 
 **Keep the sign-in on** if the site is reachable from the internet: the repo has serial numbers and, once you add them, receipts. If your proxy already does authentication (Cloudflare Access, Authelia, Authentik), you can remove `AUTH_PASSWORD` to rely on that instead. Wrong passwords are limited to 10 tries per 15 minutes per IP.
 
-On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen for an app-style icon.
+On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen. It then opens full screen like an app, with its own icon. Manuals open in the built-in reader; "Open in Safari viewer" hands the PDF to Safari for searching, sharing or saving to Files.
 
 ## Settings
 
@@ -62,7 +65,9 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen 
 | `GIT_REPO_URL` | (none) | Repo to clone. Leave unset to read a folder mounted at `REPO_PATH` instead |
 | `GIT_BRANCH` | `main` | Branch to follow |
 | `GIT_TOKEN` | (none) | GitHub token for a private repo; sent as a header, never written to disk |
-| `SYNC_INTERVAL` | `300` | Seconds between pulls (minimum 30). The footer's "Refresh now" pulls immediately |
+| `FRESHNESS_SECONDS` | `10` | A page view checks GitHub for a new commit if the last check is older than this. `0` checks on every page view |
+| `SYNC_INTERVAL` | `60` | Seconds between background pulls (minimum 30). "Refresh now" pulls immediately |
+| `WEBHOOK_SECRET` | (none) | Enables `/webhook/github` for instant pulls on push |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | (none) | Sign-in. No password means no sign-in |
 | `SECRET_KEY` | random | Signs the login cookie; set it so restarts don't sign you out |
 | `COOKIE_SECURE` | `false` | `true` once served over HTTPS only |

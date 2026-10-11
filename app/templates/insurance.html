@@ -17,13 +17,29 @@
   <div class="stat {% if missing %}stat-warn{% endif %}"><strong>{{ inv.tools|length - missing|length }} / {{ inv.tools|length }}</strong><span>With proof of purchase</span></div>
 </section>
 
-<div class="table-wrap">
+<div class="inv-cards">
+  {% for t in inv.tools %}
+  <a class="inv-card" href="{{ t.url }}#purchase">
+    {% if t.cover %}<img src="{{ t.cover.thumb }}&w=320" alt="" loading="lazy">{% else %}<span class="inv-noimg"></span>{% endif %}
+    <span class="inv-card-body">
+      <strong>{{ t.model_name }}</strong>
+      <span class="muted small">{{ t.subtitle }}</span>
+      <span class="small">Serial: {{ t.serial.split('. ')[0]|truncate(32) or '—' }}</span>
+      <span class="small">Paid {{ t.paid_text or '—' }}{% if not t.proofs %} · <span class="warn">no receipt</span>{% endif %}</span>
+    </span>
+    <strong class="inv-val">{{ t.value_text or '—' }}</strong>
+  </a>
+  {% endfor %}
+  <div class="inv-card inv-total"><strong>Total</strong><strong class="inv-val">{{ inv.total_value_text.split(' (')[0] if inv.total_value_text else money(inv.total_value) }}</strong></div>
+</div>
+
+<div class="table-wrap inv-table">
 <table class="inv">
   <thead><tr><th></th><th>Item</th><th>Model / serial</th><th>Purchased</th><th class="num">Paid</th><th class="num">Replacement</th><th>Receipt</th></tr></thead>
   <tbody>
   {% for t in inv.tools %}
   <tr>
-    <td class="inv-img">{% if t.cover %}<img src="{{ t.cover.thumb }}?w=320" alt="" loading="lazy">{% endif %}</td>
+    <td class="inv-img">{% if t.cover %}<img src="{{ t.cover.thumb }}&w=320" alt="" loading="lazy">{% endif %}</td>
     <td><a href="{{ t.url }}"><strong>{{ t.model_name }}</strong></a><br><span class="muted small">{{ t.subtitle }} · {{ t.category }}</span></td>
     <td class="small">{{ t.model_no|truncate(40) }}<br><span class="muted">{{ t.serial|truncate(40) or '—' }}</span></td>
     <td class="small">{{ t.spec_text.get('purchased','')|truncate(70) or '—' }}</td>
