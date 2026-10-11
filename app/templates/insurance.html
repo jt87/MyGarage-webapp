@@ -3,7 +3,7 @@
 {% set large = true %}
 {% block nav_actions %}
 <a class="nav-btn" href="/insurance.csv" aria-label="Export CSV">{{ icon("download") }}</a>
-<button class="nav-btn" type="button" onclick="print()" aria-label="Print">{{ icon("print") }}</button>
+<button class="nav-btn" type="button" onclick="print()" aria-label="Print">{{ icon("printer") }}</button>
 {% endblock %}
 {% block content %}
 <div class="no-print">
@@ -35,14 +35,14 @@
     <a class="row" href="{{ t.url }}#purchase"><span class="row-body clip">{{ t.model_name }}</span><span class="chev"></span></a>
     {% endfor %}
   </div>
-  <p class="section-footer">Add a receipt, invoice or auction confirmation to the tool's folder with a name starting with "receipt", like receipt.pdf or receipt-2026-10-09.jpg.</p>
+  <p class="section-footer">Add a receipt, invoice or auction confirmation to the tool's folder with a name starting with "credit-card", like receipt.pdf or receipt-2026-10-09.jpg.</p>
 </div>
 {% endif %}
 
 <div class="section">
   <div class="group">
     <a class="row action" href="/insurance.csv"><span class="row-body">Export Spreadsheet (CSV)</span>{{ icon("download", "tint-ic") }}</a>
-    <button class="row action" type="button" onclick="print()"><span class="row-body">Print or Save as PDF</span>{{ icon("print", "tint-ic") }}</button>
+    <button class="row action" type="button" onclick="print()"><span class="row-body">Print or Save as PDF</span>{{ icon("printer", "tint-ic") }}</button>
   </div>
 </div>
 </div>

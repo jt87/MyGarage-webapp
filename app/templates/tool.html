@@ -29,10 +29,10 @@
 </div>
 
 <div class="actions-row">
-  {% if t.manuals %}<a class="action-btn" href="/view/{{ t.manuals[0].path|q }}">{{ icon("book") }}Manual</a>{% endif %}
-  {% if t.consumables %}<a class="action-btn" href="#parts">{{ icon("cart") }}Parts</a>{% endif %}
-  <a class="action-btn" href="#purchase">{{ icon("receipt") }}{{ 'Receipt' if t.proofs else 'Purchase' }}</a>
-  {% if t.documents or t.manuals|length > 1 or t.other_files %}<a class="action-btn" href="#documents">{{ icon("doc") }}Docs</a>{% endif %}
+  {% if t.manuals %}<a class="action-btn" href="/view/{{ t.manuals[0].path|q }}">{{ icon("book-open") }}Manual</a>{% endif %}
+  {% if t.consumables %}<a class="action-btn" href="#parts">{{ icon("shopping-cart") }}Parts</a>{% endif %}
+  <a class="action-btn" href="#purchase">{{ icon("credit-card") }}{{ 'Receipt' if t.proofs else 'Purchase' }}</a>
+  {% if t.documents or t.manuals|length > 1 or t.other_files %}<a class="action-btn" href="#documents">{{ icon("file-text") }}Docs</a>{% endif %}
 </div>
 
 <div class="section" id="details">
@@ -103,9 +103,9 @@
 
 {% if github_repo %}
 <div class="section">
-  <div class="group"><a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span>{{ icon("pencil", "tint-ic") }}</a></div>
+  <div class="group"><a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span>{{ icon("edit-2", "tint-ic") }}</a></div>
 </div>
 {% endif %}
 
-<dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button class="close" aria-label="Close">✕</button></form><img alt=""></dialog>
+<dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button class="close" aria-label="Close">{{ icon("x") }}</button></form><img alt=""></dialog>
 {% endblock %}

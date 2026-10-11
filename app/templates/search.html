@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon %}
 {% set large = true %}
-{% set KIND = {"Tool": ("Tools", "wrench", "orange"), "Consumable": ("Parts", "cart", "blue"), "Project": ("Projects", "folder", "indigo"), "Reference": ("Reference", "book", "brown")} %}
+{% set KIND = {"Tool": ("Tools", "tool", "orange"), "Consumable": ("Parts", "shopping-cart", "blue"), "Project": ("Projects", "folder", "indigo"), "Reference": ("Reference", "book-open", "brown")} %}
 {% block content %}
 <div class="large-title"><h1>Search</h1></div>
 <form class="searchbar" action="/search" role="search">
