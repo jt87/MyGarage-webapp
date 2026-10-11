@@ -9,6 +9,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
+# The commit this image was built from (passed by the GitHub Action), so the
+# app can tell when a newer image is published. Last, to keep the cache warm.
+ARG APP_COMMIT=""
+ENV APP_COMMIT=$APP_COMMIT
+
 # 568 is TrueNAS's built-in "apps" user; override with `user:` in compose if needed.
 ENV PYTHONUNBUFFERED=1 \
     HOME=/tmp \

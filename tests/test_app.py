@@ -380,3 +380,31 @@ def fresh_logged_in():
     c = fresh()
     c.post("/login", data={"username": USER, "password": PASSWORD})
     return c
+
+
+def test_app_update_notice(monkeypatch):
+    from app import main
+    from app.version import VersionCheck
+
+    v = VersionCheck("a" * 40)
+    monkeypatch.setattr(v, "fetch_labels", lambda: {
+        "org.opencontainers.image.revision": "b" * 40,
+        "org.opencontainers.image.created": "2026-10-03T12:00:00Z"})
+    v.check()
+    assert v.update_available
+    monkeypatch.setitem(main.env.globals, "app_version", v)
+    assert "Update Available" in client.get("/").text
+    assert "Oct 3" in client.get("/settings").text
+
+    monkeypatch.setattr(v, "fetch_labels", lambda: {"org.opencontainers.image.revision": "a" * 40})
+    v.check()
+    assert not v.update_available
+    assert "latest version" in client.get("/settings").text
+
+    def offline():
+        raise OSError("no network")
+    monkeypatch.setattr(v, "fetch_labels", offline)
+    v.check()  # a failed check keeps the last answer
+    assert v.error and "latest version" in client.get("/settings").text
+    # Local builds don't know their commit and never ask the registry.
+    assert not VersionCheck("").enabled

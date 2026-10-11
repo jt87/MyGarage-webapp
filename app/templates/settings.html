@@ -7,6 +7,23 @@
 {% if msg %}<div class="banner ok" role="status">{{ msg }}</div>{% endif %}
 {% if error %}<div class="banner err" role="alert">{{ error }}</div>{% endif %}
 
+<div class="section">
+  <div class="section-header">App</div>
+  <div class="group">
+    <div class="row has-icon">{{ tile("download", "orange" if app_version.update_available else "green") }}<span class="row-body">Version</span>
+      <span class="row-detail">{% if app_version.update_available %}Update Available{% elif app_version.commit %}{{ app_version.commit[:7] }}{% else %}Development{% endif %}</span></div>
+  </div>
+  <p class="section-footer">
+    {%- if not app_version.enabled -%}This copy wasn't built by GitHub Actions, so it can't check for new versions.
+    {%- elif app_version.update_available -%}A newer version{% if app_version.latest_built %} from {{ app_version.latest_built.strftime("%b %-d") }}{% endif %} is ready ({{ app_version.latest[:7] }}). To install it, open TrueNAS, go to Apps, select {{ site_title }}, and choose Update. If you don't see Update, choose Pull Image, then restart the app. Your login and garage data are kept.
+    {%- elif app_version.latest -%}You have the latest version. Checked {{ app_version.checked|ago }}.
+    {%- elif app_version.error -%}Couldn't check for a new version. Trying again later.
+    {%- else -%}Checking for a new version…
+    {%- endif -%}
+    {%- if app_version.enabled %} "Refresh Garage Data" on the home screen only updates your tools and projects, not the app.{% endif -%}
+  </p>
+</div>
+
 <form method="post" action="/settings/security" class="section">
   <div class="section-header">Security</div>
   <div class="group">

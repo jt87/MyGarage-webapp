@@ -54,7 +54,7 @@ You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docke
 5. **Create your login.** On your home Wi-Fi, open `http://<truenas-ip>:8088`. Like Sonarr and Radarr, there's no default login: the first screen asks you to create a username and password. For safety this screen only works from your home network, so nobody can claim the app if it's reachable from the internet before you've set it up.
 6. **Add the GitHub webhook** for instant updates, once the site is on your domain. On GitHub open your **data repo's** Settings → Webhooks → Add webhook. Set the payload URL to `https://garage.example.com/webhook/github`, the content type to `application/json`, and the secret to the same value as `WEBHOOK_SECRET`. Choose "Just the push event". Webhooks are free and don't count against any limit. If GitHub can't reach your server (for example, it's only on Tailscale), skip this; changes then show up within 5 minutes of opening the site. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
 
-To update the app later, open it in Apps and choose Update (or Pull Image, then restart) after a new image is built.
+To update the app later, open it in Apps and choose Update (or Pull Image, then restart) after a new image is built. You don't have to watch GitHub for this: twice a day the app asks the registry whether a newer image exists, and Settings shows "Update Available" when one does. "Refresh Garage Data" on the home screen only pulls your data repo; it never updates the app.
 
 ## Put it on your domain
 
@@ -100,12 +100,13 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 | `GIT_TOKEN` | (none) | GitHub token for a private repo; sent as a header, never written to disk |
 | `WEBHOOK_SECRET` | (none) | Enables `/webhook/github` for instant updates on push |
 | `FRESHNESS_SECONDS` | `300` | A page view checks GitHub first if the last check is older than this |
-| `SYNC_INTERVAL` | `1800` | Seconds between background checks (minimum 60). "Check for Updates" on the home screen checks right away |
+| `SYNC_INTERVAL` | `1800` | Seconds between background checks (minimum 60). "Refresh Garage Data" on the home screen checks right away |
 | `CONFIG_PATH` | `/data/config/auth.json` | Where the login settings are kept |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | (none) | Optional first login instead of the setup screen; ignored once one exists |
 | `GITHUB_REPO` | (none) | Your data repo as `owner/name`; shows "Edit" links to the README on GitHub |
 | `SITE_TITLE` | `MyGarage` | App name: large title, first tab, Home Screen label |
 | `REPO_PATH` / `CACHE_PATH` | `/data/repo`, `/data/cache` | Where the clone and thumbnails live |
+| `APP_IMAGE` | `ghcr.io/jt87/mygarage` | Image to check for newer versions (Settings shows "Update Available") |
 
 ## Run it locally
 

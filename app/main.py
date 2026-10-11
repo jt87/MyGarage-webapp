@@ -32,6 +32,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import auth, repo
 from .sync import RepoSync, Watcher
+from .version import VersionCheck
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -70,6 +71,9 @@ sync = RepoSync(
     state_file=CACHE_PATH / "sync-state.json",
 )
 inventory = Watcher(sync, lambda: repo.load(REPO_PATH))
+# APP_COMMIT is baked into the image at build time; see Dockerfile.
+app_version = VersionCheck(os.environ.get("APP_COMMIT", ""),
+                           image=os.environ.get("APP_IMAGE", "ghcr.io/jt87/mygarage"))
 
 auth_cfg = auth.AuthConfig(CONFIG_PATH)
 sessions = auth.Sessions(auth_cfg)
@@ -81,7 +85,7 @@ if not auth_cfg.configured and os.environ.get("AUTH_USERNAME") and os.environ.ge
 env = Environment(loader=FileSystemLoader(HERE / "templates"),
                   autoescape=select_autoescape(["html"]))
 env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
-                   github_repo=GITHUB_REPO, branch=sync.branch, auth=auth_cfg,
+                   github_repo=GITHUB_REPO, branch=sync.branch, auth=auth_cfg, app_version=app_version,
                    METHODS=auth.METHODS, REQUIRED=auth.REQUIRED)
 env.filters["q"] = lambda s: quote(str(s))
 
@@ -317,7 +321,7 @@ async def thumb(request: Request):
 # --------------------------------------------------------------------------- admin
 
 async def do_sync(request: Request):
-    """"Check for Updates": asks GitHub, at most once per 15 seconds."""
+    """"Refresh Garage Data": asks GitHub, at most once per 15 seconds."""
     if sync.git_mode:
         await anyio.to_thread.run_sync(sync.ensure_fresh, 15)
     inventory.invalidate()
@@ -695,6 +699,7 @@ async def lifespan(app):
             await anyio.to_thread.run_sync(sync.sync_once)  # first clone before serving
         # An existing clone is served right away; the loop checks GitHub when due.
         sync.start(inventory.invalidate)
+    app_version.start()
     yield
 
 
