@@ -1,4 +1,4 @@
-/* Garage — styled after Apple's Human Interface Guidelines (iOS 17/18).
+/* MyGarage — styled after Apple's Human Interface Guidelines (iOS 17/18).
    Colors are Apple's semantic system colors; type follows the iOS Dynamic
    Type scale and honors the user's text size setting on iPhone/iPad.
 
@@ -323,7 +323,7 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
 .card-head { display: flex; align-items: center; gap: 6px; font-size: .882rem; font-weight: 600; color: var(--tile, var(--tint)); }
 .card-head svg { width: 17px; height: 17px; stroke-width: 2.4; }
 .card-head .chev { margin-left: auto; }
-.card-value { font-family: var(--font-rounded); font-size: 1.647rem; font-weight: 700; letter-spacing: .01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-value { font-family: var(--font-rounded); font-size: min(1.647rem, 7vw); font-weight: 700; letter-spacing: .01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-value small { font-family: var(--font); font-size: .882rem; font-weight: 500; color: var(--secondary-label); margin-left: 3px; letter-spacing: -.015em; }
 @media (min-width: 720px) { .cards { grid-template-columns: repeat(4, 1fr); } }
 

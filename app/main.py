@@ -1,4 +1,4 @@
-"""Garage web app: browse tools, manuals, consumables, projects and receipts."""
+"""MyGarage web app: browse tools, manuals, consumables, projects and receipts."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
 HERE = Path(__file__).parent
 REPO_PATH = Path(os.environ.get("REPO_PATH", "/data/repo")).resolve()
 CACHE_PATH = Path(os.environ.get("CACHE_PATH", "/data/cache")).resolve()
-SITE_TITLE = os.environ.get("SITE_TITLE", "Garage")
+SITE_TITLE = os.environ.get("SITE_TITLE", "MyGarage")
 AUTH_USER = os.environ.get("AUTH_USERNAME", "")
 AUTH_PASS = os.environ.get("AUTH_PASSWORD", "")
 SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
@@ -173,7 +173,7 @@ async def insurance_csv(request: Request):
                     "; ".join(f.name for f in t.proofs) or "none", base + t.url])
     w.writerow(["Total", "", "", "", "", "", inv.total_value_text or repo.fmt_money(inv.total_value)])
     return Response(buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": 'attachment; filename="garage-inventory.csv"'})
+                    headers={"Content-Disposition": 'attachment; filename="mygarage-inventory.csv"'})
 
 
 async def more(request: Request):
