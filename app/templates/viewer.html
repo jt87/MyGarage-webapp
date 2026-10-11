@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% block nav_actions %}
+<button class="nav-btn" type="button" data-share-file="{{ url }}" data-name="{{ name }}" aria-label="Share">{{ icon("share") }}</button>
+{% endblock %}
+{% block content %}
+{% if kind == "pdf" %}
+  <div class="pdf" id="pdf" data-src="{{ url }}"><p class="pdf-loading">Loading…</p></div>
+  <div class="pdf-hud" data-pdf-hud hidden>
+    <button type="button" data-zoom="-1" aria-label="Zoom out">{{ icon("minus") }}</button>
+    <label><input type="number" inputmode="numeric" min="1" value="1" data-page-input aria-label="Page"> of <span data-page-count></span></label>
+    <button type="button" data-zoom="1" aria-label="Zoom in">{{ icon("plus") }}</button>
+  </div>
+{% elif kind == "image" %}
+  <img class="viewer-img" src="{{ thumb }}&w=2048" alt="{{ name }}">
+{% elif kind == "model" %}
+  <div class="model" id="stl" data-src="{{ url }}"><p class="secondary">Loading 3D model…</p></div>
+  <p class="section-footer" style="text-align:center">Drag to rotate. Pinch to zoom.</p>
+{% else %}
+  <div class="section"><div class="group"><a class="row action" href="{{ url }}?download"><span class="row-body">Download {{ name }}</span></a></div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if kind == "pdf" %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="/static/pdfview.js?v=4" defer></script>
+{% elif kind == "model" %}
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="/static/stl.js?v=4"></script>
+{% endif %}
+{% endblock %}

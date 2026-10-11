@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "macros.html" import cons_row %}
+{% set large = true %}
+{% block nav_actions %}<button class="nav-btn" type="button" data-clear-checks>Clear</button>{% endblock %}
+{% block content %}
+<div class="large-title"><h1>Shopping List</h1><p class="t-subhead secondary" data-check-count>{{ inv.consumables|length }} parts across {{ groups|length }} tools</p></div>
+<label class="searchbar">
+  <svg aria-hidden="true"><use href="/static/icons.svg#search"/></svg>
+  <input type="search" placeholder="Search" data-filter="[data-cons]" aria-label="Filter parts" autocomplete="off" autocorrect="off" autocapitalize="off" enterkeyhint="search">
+</label>
+{% for t, items in groups %}
+<div class="section checklist" data-filter-group>
+  <div class="section-header prominent"><a href="{{ t.url }}" style="color:var(--label);font-weight:700;font-size:inherit">{{ t.model_name }}</a></div>
+  <div class="group">
+    {% for c in items %}{{ cons_row(c, checklist=True) }}{% endfor %}
+  </div>
+</div>
+{% endfor %}
+<p class="section-footer" style="text-align:center">Tap a part to see where to buy it. Checkmarks stay on this device.</p>
+{% endblock %}

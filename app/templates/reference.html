@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "macros.html" import nav_row %}
+{% set large = true %}
+{% block content %}
+<div class="large-title"><h1>{{ page.title }}</h1></div>
+{% if page.slug == "index" %}
+<div class="section">
+  <div class="group">
+    {% for r in inv.references if r.slug != "index" %}{{ nav_row(r.url, r.title, "book-open", "brown") }}{% endfor %}
+    {{ nav_row("/consumables", "Shopping List", "shopping-cart", "blue") }}
+  </div>
+</div>
+{% endif %}
+<div class="section"><div class="prose">{{ page.html|safe }}</div></div>
+{% endblock %}

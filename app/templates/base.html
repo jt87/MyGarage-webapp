@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% if title and title != site_title %}{{ title }} · {% endif %}{{ site_title }}</title>
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="format-detection" content="telephone=yes">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="{{ site_title }}">
+<link rel="stylesheet" href="/static/style.css?v=8">
+</head>
+<body>
+{% set tabs = [
+  ("garage", "/", site_title, "home"),
+  ("tools", "/tools", "Tools", "tool"),
+  ("shopping", "/consumables", "Shopping", "shopping-cart"),
+  ("projects", "/projects", "Projects", "folder"),
+  ("search", "/search", "Search", "search"),
+] %}
+<div class="app">
+  <aside class="sidebar" aria-label="Sections">
+    <a class="sidebar-title" href="/"><img src="/static/apple-touch-icon.png" alt="">{{ site_title }}</a>
+    <form class="searchbar" action="/search" role="search">
+      <svg aria-hidden="true"><use href="/static/icons.svg#search"/></svg>
+      <input type="search" name="q" placeholder="Search" value="{{ q or '' }}" aria-label="Search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
+    </form>
+    {% for key, href, label, icon in tabs[:4] %}
+    <a class="side-item" href="{{ href }}" {% if tab == key and path == href %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>{{ label }}</a>
+    {% endfor %}
+    <div class="side-head">Records</div>
+    <a class="side-item" href="/insurance" {% if path.startswith('/insurance') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#shield"/></svg>Insurance</a>
+    <a class="side-item" href="/reference" {% if path.startswith('/reference') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#book-open"/></svg>Reference</a>
+    <a class="side-item" href="/settings" {% if path.startswith('/settings') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#settings"/></svg>Settings</a>
+    <p class="side-foot t-footnote secondary">{% include "_sync_status.html" %}</p>
+  </aside>
+
+  <div class="main-col">
+    <header class="navbar{% if not large %} always{% endif %}" data-navbar>
+      <div class="navbar-inner">
+        <div class="nav-left">
+          {% if back %}<a class="back" href="{{ back[0] }}"><svg aria-hidden="true"><use href="/static/icons.svg#chevron-left"/></svg><span>{{ back[1] }}</span></a>{% endif %}
+        </div>
+        <div class="nav-title">{{ title }}</div>
+        <div class="nav-right">{% block nav_actions %}{% endblock %}</div>
+      </div>
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<nav class="tabbar" aria-label="Sections">
+  {% for key, href, label, icon in tabs %}
+  <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>
+    <span>{{ label }}</span>
+  </a>
+  {% endfor %}
+</nav>
+
+<dialog class="sheet" data-sheet aria-label="Options"></dialog>
+<div class="toast" data-toast role="status" aria-live="polite"></div>
+<script src="/static/app.js?v=8" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

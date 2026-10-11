@@ -1,0 +1,4 @@
+{%- if sync.git_mode -%}
+  {%- if sync.last_error -%}<span class="destructive">Can't reach GitHub.</span> Showing the saved copy{% if sync.head %} ({{ sync.head[:7] }}){% endif %}.
+  {%- else -%}Up to date{% if sync.head %} · {{ sync.head[:7] }}{% endif %} · checked {{ sync.last_checked|ago }}{%- endif -%}
+{%- else -%}Reading from a mounted folder{%- endif -%}

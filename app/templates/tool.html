@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, file_rows, kv, cons_row, tool_row %}
+{% block nav_actions %}
+<button class="nav-btn" type="button" data-share data-share-title="{{ t.title }}" aria-label="Share">{{ icon("share") }}</button>
+{% endblock %}
+{% block content %}
+{% if t.photos %}
+<div class="gallery" data-gallery>
+  <div class="slides" aria-label="Photos">
+    {% for f in t.photos %}
+    <button type="button" class="slide" data-full="{{ f.thumb }}&w=2048" aria-label="View {{ f.label }}">
+      <img src="{{ f.thumb }}&w=1280" srcset="{{ f.thumb }}&w=640 640w, {{ f.thumb }}&w=1280 1280w, {{ f.thumb }}&w=2048 2048w"
+           sizes="(max-width: 720px) 100vw, 720px" alt="{{ f.label }}" {% if not loop.first %}loading="lazy"{% endif %}>
+    </button>
+    {% endfor %}
+  </div>
+  {% if t.photos|length > 1 %}<div class="dots" aria-hidden="true">{% for f in t.photos %}<i {% if loop.first %}aria-current="true"{% endif %}></i>{% endfor %}</div>{% endif %}
+</div>
+{% endif %}
+
+<div class="hero">
+  <h1 data-title>{{ t.model_name }}</h1>
+  {% if t.subtitle %}<p class="t-subhead secondary">{{ t.subtitle }}</p>{% endif %}
+  <div class="chips">
+    <a class="pill tinted" style="--tile: var(--orange)" href="/tools">{{ t.category }}</a>
+    {% if t.value_text %}<span class="pill tinted" style="--tile: var(--green)">{{ t.value_text }}</span>{% endif %}
+    {% if not t.proofs %}<span class="pill">No receipt</span>{% endif %}
+  </div>
+</div>
+
+<div class="actions-row">
+  {% if t.manuals %}<a class="action-btn" href="/view/{{ t.manuals[0].path|q }}">{{ icon("book-open") }}Manual</a>{% endif %}
+  {% if t.consumables %}<a class="action-btn" href="#parts">{{ icon("shopping-cart") }}Parts</a>{% endif %}
+  <a class="action-btn" href="#purchase">{{ icon("credit-card") }}{{ 'Receipt' if t.proofs else 'Purchase' }}</a>
+  {% if t.documents or t.manuals|length > 1 or t.other_files %}<a class="action-btn" href="#documents">{{ icon("file-text") }}Docs</a>{% endif %}
+</div>
+
+<div class="section" id="details">
+  <div class="section-header">Details</div>
+  <div class="group">
+    {% for label, html in t.specs %}{{ kv(label, html) }}{% endfor %}
+  </div>
+</div>
+
+<div class="section" id="purchase">
+  <div class="section-header">Purchase &amp; Insurance</div>
+  <div class="group">
+    {% if t.purchased_html %}{{ kv("Purchased", t.purchased_html) }}{% endif %}
+    {% if t.paid_text %}{{ kv("Paid", t.paid_text|e) }}{% endif %}
+    {% if t.replacement_html %}{{ kv("Replacement Value", t.replacement_html) }}{% endif %}
+    {{ file_rows(t.proofs) }}
+  </div>
+  {% if not t.proofs %}<p class="section-footer">No proof of purchase on file. Add a scan or photo named <code>receipt.pdf</code> or <code>receipt.jpg</code> to this tool's folder.</p>{% endif %}
+</div>
+
+{% if t.consumables %}
+<div class="section" id="parts">
+  <div class="section-header">Parts &amp; Consumables</div>
+  <div class="group">
+    {% for c in t.consumables %}{{ cons_row(c) }}{% endfor %}
+  </div>
+  {% if t.consumables_notes_html %}<div class="section-footer">{{ t.consumables_notes_html|striptags }}</div>{% endif %}
+</div>
+{% endif %}
+
+{% set docs = t.manuals + t.documents + t.other_files %}
+{% if docs %}
+<div class="section" id="documents">
+  <div class="section-header">Manuals &amp; Documents</div>
+  <div class="group">{{ file_rows(docs) }}</div>
+</div>
+{% endif %}
+
+{% for title, html in t.sections_html %}
+<div class="section" id="{{ title|lower|replace(' & ','-')|replace(' ','-') }}">
+  <div class="section-header">{{ title }}</div>
+  <div class="prose">{{ html|safe }}</div>
+</div>
+{% endfor %}
+
+{% if t.log %}
+<div class="section" id="log">
+  <div class="section-header">Maintenance Log</div>
+  <div class="group">
+    {% for e in t.log %}
+    <div class="row selectable"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>
+    {% endfor %}
+  </div>
+  {% if t.log_notes_html %}<div class="section-footer">{{ t.log_notes_html|striptags }}</div>{% endif %}
+</div>
+{% endif %}
+
+{% if t.projects %}
+<div class="section">
+  <div class="section-header">Used In</div>
+  <div class="group">
+    {% for slug, title in t.projects %}
+    <a class="row has-icon" href="/projects/{{ slug }}"><span class="tile" style="--tile: var(--indigo)">{{ icon("folder") }}</span><span class="row-body clip">{{ title }}</span><span class="chev"></span></a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if github_repo %}
+<div class="section">
+  <div class="group"><a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span>{{ icon("edit-2", "tint-ic") }}</a></div>
+</div>
+{% endif %}
+
+<dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button class="close" aria-label="Close">{{ icon("x") }}</button></form><img alt=""></dialog>
+{% endblock %}

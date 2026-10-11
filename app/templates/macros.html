@@ -1,0 +1,59 @@
+{# Shared list-row components (inset grouped style). #}
+
+{% macro icon(name, cls="") -%}
+<svg class="{{ cls }}" aria-hidden="true"><use href="/static/icons.svg#{{ name }}"/></svg>
+{%- endmacro %}
+
+{% macro tile(name, color) -%}
+<span class="tile" style="--tile: var(--{{ color }})">{{ icon(name) }}</span>
+{%- endmacro %}
+
+{% macro nav_row(href, title, glyph=None, color="gray", detail="", sub="") -%}
+<a class="row{% if glyph %} has-icon{% endif %}" href="{{ href }}">
+  {% if glyph %}{{ tile(glyph, color) }}{% endif %}
+  <span class="row-body"><span class="row-title clip">{{ title }}</span>{% if sub %}<span class="row-sub clip">{{ sub }}</span>{% endif %}</span>
+  {% if detail %}<span class="row-detail">{{ detail }}</span>{% endif %}
+  <span class="chev"></span>
+</a>
+{%- endmacro %}
+
+{% macro tool_row(t, detail="", sub=None, href=None, filter=False) -%}
+<a class="row has-thumb" href="{{ href or t.url }}"{% if filter %} data-tool data-text="{{ (t.title ~ ' ' ~ t.category ~ ' ' ~ t.model_no)|lower }}"{% endif %}>
+  {% if t.cover %}<img class="thumb" src="{{ t.cover.thumb }}&w=320" alt="" loading="lazy">
+  {% else %}<span class="thumb">{{ icon("tool") }}</span>{% endif %}
+  <span class="row-body">
+    <span class="row-title clip">{{ t.model_name }}</span>
+    <span class="row-sub clip">{{ t.subtitle if sub is none else sub }}</span>
+  </span>
+  {% if detail %}<span class="row-detail">{{ detail }}</span>{% endif %}
+  <span class="chev"></span>
+</a>
+{%- endmacro %}
+
+{% set FILE_COLORS = {"pdf": "red", "image": "blue", "model": "purple", "other": "gray"} %}
+
+{% macro file_rows(files) -%}
+{% for f in files %}
+<a class="row has-icon" href="{{ '/view/' ~ (f.path|q) if f.kind in ('pdf', 'model', 'image') else f.url ~ '?download' }}">
+  <span class="file-tile" style="--tile: var(--{{ FILE_COLORS[f.kind] }})"><span>{{ f.ext|upper }}</span></span>
+  <span class="row-body"><span class="row-title clip">{{ f.label }}</span><span class="row-sub clip">{{ f.name }} · {{ f.human_size }}</span></span>
+  <span class="chev"></span>
+</a>
+{% endfor %}
+{%- endmacro %}
+
+{% macro kv(label, value_html) -%}
+<div class="row kv selectable"><span class="kv-label">{{ label }}</span><span class="kv-value">{{ value_html|safe }}</span></div>
+{%- endmacro %}
+
+{% macro cons_row(c, checklist=False) -%}
+<div class="row{% if checklist %} has-check{% endif %}" data-cons data-buy="{{ c.buy_json }}" data-text="{{ (c.item ~ ' ' ~ c.spec ~ ' ' ~ c.where ~ ' ' ~ c.tool_name)|lower }}">
+  {% if checklist %}<label class="check-hit"><input class="check" type="checkbox" data-key="{{ c.tool_slug }}:{{ c.item }}" aria-label="Need {{ c.item }}"></label>{% endif %}
+  <span class="row-body" data-open-buy role="button" tabindex="0">
+    <span class="row-title">{{ c.item }}</span>
+    <span class="row-sub">{{ c.spec_html|safe }}</span>
+    {% if c.price %}<span class="row-note">{{ c.price }} · {{ c.where }}</span>{% endif %}
+  </span>
+  <button class="buy-btn" type="button" data-open-buy aria-label="Where to buy {{ c.item }}">{{ icon("shopping-cart") }}</button>
+</div>
+{%- endmacro %}
