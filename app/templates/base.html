@@ -15,13 +15,13 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="{{ site_title }}">
-<link rel="stylesheet" href="/static/style.css?v=4">
+<link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
 {% set tabs = [
-  ("garage", "/", site_title, "garage"),
-  ("tools", "/tools", "Tools", "wrench"),
-  ("shopping", "/consumables", "Shopping", "checklist"),
+  ("garage", "/", site_title, "home"),
+  ("tools", "/tools", "Tools", "tool"),
+  ("shopping", "/consumables", "Shopping", "shopping-cart"),
   ("projects", "/projects", "Projects", "folder"),
   ("search", "/search", "Search", "search"),
 ] %}
@@ -33,11 +33,11 @@
       <input type="search" name="q" placeholder="Search" value="{{ q or '' }}" aria-label="Search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
     </form>
     {% for key, href, label, icon in tabs[:4] %}
-    <a class="side-item" href="{{ href }}" {% if tab == key and path == href %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>{{ 'Overview' if key == 'garage' else label }}</a>
+    <a class="side-item" href="{{ href }}" {% if tab == key and path == href %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>{{ label }}</a>
     {% endfor %}
     <div class="side-head">Records</div>
     <a class="side-item" href="/insurance" {% if path.startswith('/insurance') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#shield"/></svg>Insurance</a>
-    <a class="side-item" href="/reference" {% if path.startswith('/reference') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#book"/></svg>Reference</a>
+    <a class="side-item" href="/reference" {% if path.startswith('/reference') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#book-open"/></svg>Reference</a>
     <p class="side-foot t-footnote secondary">{% include "_sync_status.html" %}</p>
   </aside>
 
@@ -60,7 +60,7 @@
 <nav class="tabbar" aria-label="Sections">
   {% for key, href, label, icon in tabs %}
   <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}>
-    <svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}{% if key == 'garage' and tab == key %}-fill{% endif %}"/></svg>
+    <svg aria-hidden="true"><use href="/static/icons.svg#{{ icon }}"/></svg>
     <span>{{ label }}</span>
   </a>
   {% endfor %}
@@ -68,7 +68,7 @@
 
 <dialog class="sheet" data-sheet aria-label="Options"></dialog>
 <div class="toast" data-toast role="status" aria-live="polite"></div>
-<script src="/static/app.js?v=4" defer></script>
+<script src="/static/app.js?v=5" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

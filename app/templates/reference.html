@@ -6,8 +6,8 @@
 {% if page.slug == "index" %}
 <div class="section">
   <div class="group">
-    {% for r in inv.references if r.slug != "index" %}{{ nav_row(r.url, r.title, "book", "brown") }}{% endfor %}
-    {{ nav_row("/consumables", "Shopping List", "checklist", "blue") }}
+    {% for r in inv.references if r.slug != "index" %}{{ nav_row(r.url, r.title, "book-open", "brown") }}{% endfor %}
+    {{ nav_row("/consumables", "Shopping List", "shopping-cart", "blue") }}
   </div>
 </div>
 {% endif %}

@@ -6,7 +6,7 @@
 
 <div class="cards">
   <a class="card" href="/tools" style="--tile: var(--orange)">
-    <span class="card-head">{{ icon("wrench") }}Tools<span class="chev"></span></span>
+    <span class="card-head">{{ icon("tool") }}Tools<span class="chev"></span></span>
     <span class="card-value">{{ inv.tools|length }}</span>
   </a>
   <a class="card" href="/insurance" style="--tile: var(--green)">
@@ -14,7 +14,7 @@
     <span class="card-value">{{ inv.total_display }}</span>
   </a>
   <a class="card" href="/consumables" style="--tile: var(--blue)">
-    <span class="card-head">{{ icon("checklist") }}Parts<span class="chev"></span></span>
+    <span class="card-head">{{ icon("shopping-cart") }}Parts<span class="chev"></span></span>
     <span class="card-value">{{ inv.consumables|length }}<small>items</small></span>
   </a>
   <a class="card" href="/projects" style="--tile: var(--indigo)">
@@ -27,7 +27,7 @@
 <div class="shelf">
   {% for t in inv.tools %}
   <a href="{{ t.url }}">
-    {% if t.cover %}<img src="{{ t.cover.thumb }}&w=640" alt="" loading="lazy">{% else %}<span class="noimg">{{ icon("wrench") }}</span>{% endif %}
+    {% if t.cover %}<img src="{{ t.cover.thumb }}&w=640" alt="" loading="lazy">{% else %}<span class="noimg">{{ icon("tool") }}</span>{% endif %}
     <strong>{{ t.model_name }}</strong><span>{{ t.subtitle }}</span>
   </a>
   {% endfor %}
@@ -51,13 +51,13 @@
 <div class="section">
   <div class="group">
     {{ nav_row("/insurance", "Insurance", "shield", "green", inv.total_display) }}
-    {{ nav_row("/reference", "Reference", "book", "brown") }}
+    {{ nav_row("/reference", "Reference", "book-open", "brown") }}
   </div>
 </div>
 
 <div class="section">
   <div class="group">
-    <form method="post" action="/sync"><button class="row action has-icon">{{ tile("refresh", "blue") }}<span class="row-body">Check for Updates</span></button></form>
+    <form method="post" action="/sync"><button class="row action has-icon">{{ tile("refresh-cw", "blue") }}<span class="row-body">Check for Updates</span></button></form>
     {% if github_repo %}<a class="row action has-icon" href="https://github.com/{{ github_repo }}" target="_blank" rel="noopener">{{ tile("github", "gray") }}<span class="row-body">Open on GitHub</span></a>{% endif %}
   </div>
   <p class="section-footer">{% include "_sync_status.html" %}{% if sync.git_mode %}. {{ sync.checks_today }} GitHub check{{ '' if sync.checks_today == 1 else 's' }} today.{% endif %}</p>
