@@ -1,0 +1,30 @@
+# TrueNAS SCALE: Apps → Discover Apps → ⋮ → Install via YAML. Paste this,
+# then replace every CHANGE_ME. See webapp/README.md for the full walkthrough.
+services:
+  garage:
+    image: ghcr.io/jt87/mygarage:latest
+    container_name: garage
+    restart: unless-stopped
+    user: "568:568"            # TrueNAS "apps" user; owns the data folder below
+    ports:
+      - "8088:8000"            # http://<truenas-ip>:8088 on your LAN
+    environment:
+      SITE_TITLE: Garage
+      # Where the content comes from. The app clones this repo and pulls every SYNC_INTERVAL seconds.
+      GIT_REPO_URL: https://github.com/your-name/your-data-repo.git
+      GIT_BRANCH: main
+      GIT_TOKEN: CHANGE_ME     # fine-grained GitHub token: this repo only, Contents = Read-only
+      SYNC_INTERVAL: "300"
+      GITHUB_REPO: your-name/your-data-repo   # adds "Edit" links to GitHub; remove to hide them
+      # Sign-in. Leave both set unless your reverse proxy already does auth.
+      AUTH_USERNAME: alex
+      AUTH_PASSWORD: CHANGE_ME
+      SECRET_KEY: CHANGE_ME    # any long random string; keeps you signed in across restarts
+      COOKIE_SECURE: "false"   # "true" once you only reach it over https
+    volumes:
+      - /mnt/CHANGE_ME_POOL/apps/garage:/data   # repo clone + thumbnail cache; safe to delete
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 60s
+      timeout: 5s
+      start_period: 120s

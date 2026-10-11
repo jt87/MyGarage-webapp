@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "macros.html" import buy %}
+{% block title %}Shopping list · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h1>Shopping list</h1>
+  <div class="actions">
+    <button class="btn" type="button" data-clear-checks>Clear checks</button>
+    <button class="btn" type="button" onclick="print()">Print</button>
+  </div>
+</div>
+<p class="muted">Every consumable and replacement part across the garage, with search links at the stores named in each tool's notes. Tick items to build a list; ticks are saved on this device only.</p>
+
+<input class="filter-input" type="search" placeholder="Filter (e.g. blade, battery, KP2039)…" data-filter=".cons-group .cons" aria-label="Filter consumables">
+
+{% for t, items in groups %}
+<section class="panel cons-group">
+  <div class="section-head">
+    <h2><a href="{{ t.url }}">{{ t.model_name }}</a> <span class="muted small">{{ t.subtitle }}</span></h2>
+  </div>
+  <div class="cons-list">
+    {% for c in items %}
+    <article class="cons" data-text="{{ (c.item ~ ' ' ~ c.spec ~ ' ' ~ c.where ~ ' ' ~ t.title)|lower }}">
+      <label class="check"><input type="checkbox" data-key="{{ t.slug }}:{{ c.item }}"><span class="sr-only">Need</span></label>
+      <div class="cons-main">
+        <h3>{{ c.item_html|safe }}</h3>
+        <p>{{ c.spec_html|safe }}</p>
+        <p class="muted small">Where: {{ c.where_html|safe }}{% if c.price %} · <strong>{{ c.price_html|safe }}</strong>{% endif %}</p>
+      </div>
+      {{ buy(c) }}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

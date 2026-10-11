@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "macros.html" import tool_card %}
+{% block title %}Tools · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h1>Tools <span class="muted">{{ items|length }}</span></h1>
+  <form class="sort" method="get">
+    {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+    <label>Sort
+      <select name="sort" onchange="this.form.submit()">
+        {% for v, l in [("name","Name"),("category","Category"),("value","Value")] %}
+        <option value="{{ v }}" {% if sort == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</div>
+<nav class="filters" aria-label="Categories">
+  <a href="/tools?sort={{ sort }}" {% if not category %}aria-current="true"{% endif %}>All</a>
+  {% for c, n in inv.categories %}
+  <a href="/tools?category={{ c|q }}&sort={{ sort }}" {% if category == c %}aria-current="true"{% endif %}>{{ c }} <small>{{ n }}</small></a>
+  {% endfor %}
+</nav>
+<div class="grid">
+  {% for t in items %}{{ tool_card(t) }}{% endfor %}
+</div>
+{% endblock %}

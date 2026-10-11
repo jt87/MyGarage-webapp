@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · {{ site_title }}</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+<form class="panel login" method="post" action="/login?next={{ next|q }}">
+  <h1><img src="/static/icon.svg" alt="" width="32" height="32"> {{ site_title }}</h1>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <label>Username <input name="username" autocomplete="username" required autofocus></label>
+  <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+  <button class="btn btn-primary">Sign in</button>
+</form>
+</body>
+</html>

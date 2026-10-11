@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "macros.html" import file_list, tool_card %}
+{% block title %}{{ p.title }} · {{ site_title }}{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/projects">Projects</a></nav>
+<h1>{{ p.title }}</h1>
+<p class="meta">
+  <span class="chip chip-{{ p.status|lower|replace(' ','-') }}">{{ p.status }}</span>
+  {% if p.started %}<span>Started {{ p.started }}</span>{% endif %}
+  {% if p.finished %}<span>Finished {{ p.finished }}</span>{% endif %}
+  {% if github_repo %}<a href="https://github.com/{{ github_repo }}/edit/{{ branch }}/projects/{{ p.slug }}/README.md" target="_blank" rel="noopener">✎ Edit</a>{% endif %}
+</p>
+
+<div class="project-layout">
+  <article class="panel prose">{{ p.html|safe }}</article>
+  <aside>
+    <section class="panel">
+      <h2>Files</h2>
+      {{ file_list(p.files, "No files yet.") }}
+    </section>
+    {% if used %}
+    <section class="panel">
+      <h2>Tools</h2>
+      {% for t in used %}<a class="row-link" href="{{ t.url }}">{% if t.cover %}<img class="mini" src="{{ t.cover.thumb }}?w=320" alt="">{% endif %}<span><strong>{{ t.model_name }}</strong><br><span class="muted small">{{ t.subtitle }}</span></span></a>{% endfor %}
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

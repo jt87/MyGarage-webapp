@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}{{ site_title }}{% endblock %}</title>
+<meta name="theme-color" content="#e8590c">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{{ site_title }}">
+<link rel="stylesheet" href="/static/style.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><img src="/static/icon.svg" alt="" width="26" height="26">{{ site_title }}</a>
+  <nav class="nav" aria-label="Main">
+    {% set links = [("/tools","Tools"),("/consumables","Shopping"),("/projects","Projects"),("/insurance","Insurance"),("/reference","Reference")] %}
+    {% for href, label in links %}
+    <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <form class="search" action="/search" role="search">
+    <input type="search" name="q" placeholder="Search tools, parts, manuals…" value="{{ q or '' }}" aria-label="Search">
+  </form>
+</header>
+<main class="wrap">
+{% block content %}{% endblock %}
+</main>
+<footer class="footer wrap">
+  <span>
+  {% if sync.git_mode %}
+    Synced from GitHub{% if sync.head %} at <code>{{ sync.head[:7] }}</code>{% endif %}{% if sync.last_ok %} · {{ sync.last_ok.strftime('%b %-d, %-I:%M %p') }} UTC{% endif %}
+    {% if sync.last_error %}<span class="warn"> · last sync failed: {{ sync.last_error }}</span>{% endif %}
+  {% else %}Reading from a mounted folder{% endif %}
+  </span>
+  <form method="post" action="/sync"><button class="link">Refresh now</button></form>
+  {% if auth_enabled %}<form method="post" action="/logout"><button class="link">Sign out</button></form>{% endif %}
+</footer>
+<script src="/static/app.js" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
