@@ -1,16 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{% include "_auth_head.html" %}
 <title>Log In · {{ site_title }}</title>
-<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="{{ site_title }}">
-<link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body class="login-body">
 <form class="login" method="post" action="/login?next={{ next|q }}">
@@ -18,9 +10,13 @@
   <h1>{{ site_title }}</h1>
   <p class="t-subhead secondary">Log in to view your tools and project files.</p>
   <div class="group">
-    <label class="row"><span class="sr-only">Username</span><input name="username" placeholder="Username" autocomplete="username" autocapitalize="off" autocorrect="off" required autofocus></label>
+    <label class="row"><span class="sr-only">Username</span><input name="username" placeholder="Username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus></label>
     <label class="row"><span class="sr-only">Password</span><input name="password" type="password" placeholder="Password" autocomplete="current-password" required></label>
   </div>
+  <div class="group" style="margin-top:0">
+    <label class="row"><span class="row-body">Remember Me</span><input class="switch" type="checkbox" name="remember" checked></label>
+  </div>
+  <p class="login-foot t-footnote secondary">Keeps you logged in on this device for 30 days.</p>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <button class="btn-filled">Log In</button>
 </form>

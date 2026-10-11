@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, tile %}
+{% set large = true %}
+{% block content %}
+<div class="large-title"><h1>Settings</h1></div>
+
+{% if msg %}<div class="banner ok" role="status">{{ msg }}</div>{% endif %}
+{% if error %}<div class="banner err" role="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="/settings/security" class="section">
+  <div class="section-header">Security</div>
+  <div class="group">
+    <label class="row has-icon">{{ tile("lock", "blue") }}<span class="row-body">Authentication</span>
+      <select name="method" data-method>
+        {% for k, label in METHODS.items() %}<option value="{{ k }}" {% if auth.method == k %}selected{% endif %}>{{ {"forms": "Login Page", "basic": "Browser Popup", "external": "External"}[k] }}</option>{% endfor %}
+      </select></label>
+    <label class="row has-icon">{{ tile("shield", "green") }}<span class="row-body">Required</span>
+      <select name="required">
+        <option value="enabled" {% if auth.required == "enabled" %}selected{% endif %}>Always</option>
+        <option value="local" {% if auth.required == "local" %}selected{% endif %}>Not on Home Network</option>
+      </select></label>
+    <label class="row has-icon" data-external-confirm {% if auth.method != "external" %}hidden{% endif %}>{{ tile("alert-triangle", "orange") }}<span class="row-body t-subhead">My reverse proxy requires its own login</span><input class="switch" type="checkbox" name="confirm_external" {% if auth.method == "external" %}checked{% endif %}></label>
+    <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password" required></label>
+    <button class="row action">Save Security Settings</button>
+  </div>
+  <p class="section-footer"><strong>Login Page</strong> is recommended and works best from the Home Screen. <strong>Browser Popup</strong> uses Safari's built-in prompt. <strong>External</strong> turns off this app's login; only use it when a reverse proxy such as Authelia or Cloudflare Access already requires one. <strong>Not on Home Network</strong> skips the login for devices on your Wi-Fi; anything that comes in through your domain still has to log in.</p>
+</form>
+
+<form method="post" action="/settings/account" class="section">
+  <div class="section-header">Account</div>
+  <div class="group">
+    <label class="row has-icon">{{ tile("user", "gray") }}<span class="sr-only">Username</span><input class="row-input" name="username" value="{{ auth.username }}" placeholder="Username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+    <label class="row"><span class="sr-only">New password</span><input class="row-input" name="password" type="password" placeholder="New Password (optional)" autocomplete="new-password" minlength="8"></label>
+    <label class="row"><span class="sr-only">Confirm new password</span><input class="row-input" name="confirm" type="password" placeholder="Confirm New Password" autocomplete="new-password"></label>
+    <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password" required></label>
+    <button class="row action">Update Account</button>
+  </div>
+  <p class="section-footer">Changing your username or password logs out your other devices.</p>
+</form>
+
+<div class="section">
+  <div class="section-header">API Key</div>
+  <div class="group">
+    <div class="row has-icon">{{ tile("key", "yellow") }}<span class="row-body"><code class="api-key" data-api-key data-value="{{ auth.api_key }}">••••••••••••••••••••••••</code></span>
+      <button class="buy-btn" type="button" data-reveal aria-label="Show API key">{{ icon("eye") }}</button>
+      <button class="buy-btn" type="button" data-copy-key aria-label="Copy API key">{{ icon("copy") }}</button>
+    </div>
+    <form method="post" action="/settings/apikey"><button class="row action destructive" onclick="return confirm('Create a new API key? Scripts using the old key will stop working.')">Regenerate API Key</button></form>
+  </div>
+  <p class="section-footer">For scripts and shortcuts: send it as an <code>X-Api-Key</code> header. For example, an iOS Shortcut can download <code>/insurance.csv</code> with it.</p>
+</div>
+
+<div class="section">
+  <div class="section-header">Devices</div>
+  <div class="group">
+    <form method="post" action="/settings/sessions"><button class="row action has-icon">{{ tile("smartphone", "indigo") }}<span class="row-body">Log Out All Other Devices</span></button></form>
+  </div>
+  <p class="section-footer">Use this if you lost a phone or logged in on someone else's computer.</p>
+</div>
+
+<div class="section">
+  <div class="group">
+    <div class="row selectable"><span class="row-body text t-subhead secondary">Forgot your password? From the TrueNAS shell for this app, run <code>python -m app.auth reset</code>, then open {{ site_title }} from your home network to create a new login.</span></div>
+  </div>
+</div>
+{% endblock %}

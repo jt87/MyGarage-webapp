@@ -5,14 +5,20 @@ from pathlib import Path
 
 os.environ.setdefault("REPO_PATH", str(Path(__file__).resolve().parents[2]))
 os.environ.setdefault("CACHE_PATH", "/tmp/garage-test-cache")
+import tempfile  # noqa: E402
+
+os.environ["CONFIG_PATH"] = os.path.join(tempfile.mkdtemp(), "auth.json")
 
 from starlette.testclient import TestClient  # noqa: E402
 
-from app import repo  # noqa: E402
+from app import auth, main, repo  # noqa: E402
 from app.main import app  # noqa: E402
 
 ROOT = Path(os.environ["REPO_PATH"])
-client = TestClient(app)
+USER, PASSWORD = "alex", "correct horse battery"
+main.auth_cfg.set_credentials(USER, PASSWORD)
+client = TestClient(app)  # an internet client: its address isn't local
+client.post("/login", data={"username": USER, "password": PASSWORD, "remember": "on"})
 
 
 def test_every_tool_folder_is_listed_and_renders():
@@ -150,3 +156,116 @@ def test_webhook_ignores_other_branches(monkeypatch):
     r = client.post("/webhook/github", content=body,
                     headers={"X-GitHub-Event": "push", "X-Hub-Signature-256": sig})
     assert r.status_code == 200 and fetched == []
+
+
+
+# --------------------------------------------------------------------------- security
+
+def fresh(**kw):
+    """A client with no cookies. client=(ip, port) sets the TCP peer address."""
+    return TestClient(app, follow_redirects=False, **kw)
+
+
+def test_password_is_hashed_not_stored():
+    raw = Path(os.environ["CONFIG_PATH"]).read_text()
+    assert PASSWORD not in raw and "pbkdf2_sha256$600000$" in raw
+    assert oct(Path(os.environ["CONFIG_PATH"]).stat().st_mode & 0o777) == "0o600"
+
+
+def test_pages_require_login():
+    r = fresh().get("/tools", headers={"accept": "text/html"})
+    assert r.status_code == 303 and r.headers["location"].startswith("/login?next=/tools")
+    assert fresh().get("/files/tools/acme-ts10/manual.pdf").status_code == 401
+    assert fresh().get("/static/style.css").status_code == 200
+    assert fresh().get("/healthz").json() == {"ok": True}
+
+
+def test_login_and_remember_me():
+    c = fresh()
+    bad = c.post("/login", data={"username": USER, "password": "nope"})
+    assert bad.status_code == 401 and "Incorrect username or password" in bad.text
+    ok = c.post("/login?next=/tools", data={"username": USER.upper(), "password": PASSWORD})
+    assert ok.status_code == 303 and ok.headers["location"] == "/tools"
+    cookie = ok.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=lax" in cookie and "max-age" not in cookie
+    assert c.get("/tools").status_code == 200
+    remembered = fresh().post("/login", data={"username": USER, "password": PASSWORD, "remember": "on"})
+    assert "max-age=2592000" in remembered.headers["set-cookie"].lower()
+
+
+def test_login_rate_limit():
+    c = fresh(client=("203.0.113.9", 1234))
+    for _ in range(10):
+        c.post("/login", data={"username": USER, "password": "wrong"})
+    r = c.post("/login", data={"username": USER, "password": PASSWORD})
+    assert "Too many attempts" in r.text
+    main.throttle.fails.clear(); main.throttle.all.clear()
+
+
+def test_local_bypass_cannot_be_forged():
+    main.auth_cfg.data["required"] = "local"
+    try:
+        assert fresh(client=("192.168.1.20", 5000)).get("/tools").status_code == 200
+        # Through a reverse proxy: must log in, whatever the header claims.
+        proxied = fresh(client=("192.168.1.2", 5000))
+        r = proxied.get("/tools", headers={"X-Forwarded-For": "192.168.1.20", "accept": "text/html"})
+        assert r.status_code == 303
+        assert fresh(client=("8.8.8.8", 5000)).get("/tools").status_code == 401
+    finally:
+        main.auth_cfg.data["required"] = "enabled"
+
+
+def test_api_key():
+    key = main.auth_cfg.api_key
+    c = fresh()
+    assert c.get("/insurance.csv", headers={"X-Api-Key": key}).status_code == 200
+    assert c.get(f"/insurance.csv?apikey={key}").status_code == 200
+    assert c.get("/insurance.csv", headers={"X-Api-Key": "0" * 32}).status_code == 401
+    assert c.post("/settings/apikey", headers={"X-Api-Key": key}).status_code == 403
+
+
+def test_basic_auth():
+    import base64
+    main.auth_cfg.data["method"] = "basic"
+    try:
+        r = fresh().get("/tools")
+        assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
+        good = base64.b64encode(f"{USER}:{PASSWORD}".encode()).decode()
+        assert fresh().get("/tools", headers={"Authorization": f"Basic {good}"}).status_code == 200
+    finally:
+        main.auth_cfg.data["method"] = "forms"
+
+
+def test_log_out_everywhere_and_cross_site_posts():
+    c = fresh()
+    c.post("/login", data={"username": USER, "password": PASSWORD})
+    old = c.cookies.get(auth.COOKIE)
+    assert c.post("/settings/sessions", headers={"Origin": "https://evil.example"}).status_code == 403
+    r = c.post("/settings/sessions", headers={"Origin": "http://testserver"})
+    assert r.status_code == 303
+    stale = fresh(); stale.cookies.set(auth.COOKIE, old)
+    assert stale.get("/tools", headers={"accept": "text/html"}).status_code == 303
+    assert c.get("/tools").status_code == 200   # this device got a new session
+    client.post("/login", data={"username": USER, "password": PASSWORD, "remember": "on"})
+
+
+def test_settings_require_current_password():
+    r = client.post("/settings/security", data={"method": "external", "required": "enabled",
+                                                 "confirm_external": "on", "current": "wrong"})
+    assert "incorrect" in r.headers.get("location", "") or "incorrect" in r.text
+    assert main.auth_cfg.method == "forms"
+
+
+def test_first_run_setup_only_from_home_network(tmp_path, monkeypatch):
+    cfg = auth.AuthConfig(tmp_path / "auth.json")
+    monkeypatch.setattr(main, "auth_cfg", cfg)
+    monkeypatch.setattr(main.sessions, "cfg", cfg)
+    form = {"username": "me", "password": "longenough", "confirm": "longenough",
+            "method": "forms", "required": "enabled"}
+    assert fresh().get("/tools").headers["location"] == "/setup"
+    remote = fresh(client=("8.8.8.8", 1)).post("/setup", data=form)
+    assert "from your home network" in remote.text and not cfg.configured
+    proxied = fresh(client=("172.17.0.1", 1)).post("/setup", data=form, headers={"X-Forwarded-For": "10.0.0.5"})
+    assert not cfg.configured and proxied.status_code == 200
+    local = fresh(client=("192.168.1.10", 1)).post("/setup", data=form)
+    assert local.status_code == 303 and cfg.configured and cfg.check("me", "longenough")

@@ -52,6 +52,7 @@
   <div class="group">
     {{ nav_row("/insurance", "Insurance", "shield", "green", inv.total_display) }}
     {{ nav_row("/reference", "Reference", "book-open", "brown") }}
+    {{ nav_row("/settings", "Settings", "settings", "gray") }}
   </div>
 </div>
 
@@ -63,7 +64,7 @@
   <p class="section-footer">{% include "_sync_status.html" %}{% if sync.git_mode %}. {{ sync.checks_today }} GitHub check{{ '' if sync.checks_today == 1 else 's' }} today.{% endif %}</p>
 </div>
 
-{% if auth_enabled %}
+{% if can_logout %}
 <div class="section">
   <div class="group"><form method="post" action="/logout"><button class="row action destructive" style="justify-content:center">Log Out</button></form></div>
 </div>
