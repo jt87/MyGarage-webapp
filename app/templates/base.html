@@ -15,7 +15,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="{{ site_title }}">
-<link rel="stylesheet" href="/static/style.css?v=6">
+<link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
 {% set tabs = [
@@ -38,6 +38,7 @@
     <div class="side-head">Records</div>
     <a class="side-item" href="/insurance" {% if path.startswith('/insurance') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#shield"/></svg>Insurance</a>
     <a class="side-item" href="/reference" {% if path.startswith('/reference') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#book-open"/></svg>Reference</a>
+    <a class="side-item" href="/settings" {% if path.startswith('/settings') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#settings"/></svg>Settings</a>
     <p class="side-foot t-footnote secondary">{% include "_sync_status.html" %}</p>
   </aside>
 
@@ -68,7 +69,7 @@
 
 <dialog class="sheet" data-sheet aria-label="Options"></dialog>
 <div class="toast" data-toast role="status" aria-live="polite"></div>
-<script src="/static/app.js?v=5" defer></script>
+<script src="/static/app.js?v=7" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

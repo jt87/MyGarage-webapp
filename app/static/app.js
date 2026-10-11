@@ -175,6 +175,22 @@
     refresh();
   });
 
+  // ---------------------------------------------------------------- settings
+  const keyEl = $("[data-api-key]");
+  const reveal = $("[data-reveal]");
+  if (keyEl && reveal) reveal.addEventListener("click", () => {
+    const shown = keyEl.textContent === keyEl.dataset.value;
+    keyEl.textContent = shown ? "•".repeat(24) : keyEl.dataset.value;
+    reveal.setAttribute("aria-label", shown ? "Show API key" : "Hide API key");
+  });
+  const copyKey = $("[data-copy-key]");
+  if (keyEl && copyKey) copyKey.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(keyEl.dataset.value); toast("API Key Copied"); } catch {}
+  });
+  const methodSel = $("[data-method]");
+  const extRow = $("[data-external-confirm]");
+  if (methodSel && extRow) methodSel.addEventListener("change", () => { extRow.hidden = methodSel.value !== "external"; });
+
   // ---------------------------------------------------------------- keyboard (iPad/Mac)
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && !/input|textarea|select/i.test(document.activeElement.tagName)) {

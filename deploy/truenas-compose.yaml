@@ -21,13 +21,11 @@ services:
       FRESHNESS_SECONDS: "300"
       SYNC_INTERVAL: "1800"
       GITHUB_REPO: jt87/MyGarage   # adds "Edit" links to GitHub; remove to hide them
-      # Sign-in. Leave both set unless your reverse proxy already does auth.
-      AUTH_USERNAME: jared
-      AUTH_PASSWORD: CHANGE_ME
-      SECRET_KEY: CHANGE_ME    # any long random string; keeps you signed in across restarts
-      COOKIE_SECURE: "false"   # "true" once you only reach it over https
+      # No login settings here: like Sonarr and Radarr, MyGarage asks you to
+      # create a username and password the first time you open it, and keeps
+      # them (hashed) in /data/config. Change them later in Settings.
     volumes:
-      - /mnt/CHANGE_ME_POOL/apps/mygarage:/data   # repo clone + thumbnail cache; safe to delete
+      - /mnt/CHANGE_ME_POOL/apps/mygarage:/data   # repo clone, thumbnail cache, and config/ (your login; keep it)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
       interval: 60s

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+{% include "_auth_head.html" %}
+<title>Set Up · {{ site_title }}</title>
+</head>
+<body class="login-body">
+<form class="login" method="post" action="/setup">
+  <img class="app-icon" src="/static/apple-touch-icon.png" alt="">
+  <h1>Authentication Required</h1>
+  {% if not local %}
+  <p class="t-subhead secondary">Finish setting up {{ site_title }} from your home network.</p>
+  <div class="group" style="margin-top:20px"><div class="row selectable"><span class="row-body text t-subhead">For security, the first username and password can only be created from a device on the same network as your server, for example by opening <code>http://&lt;truenas-ip&gt;:8088</code> on your Wi-Fi.</span></div></div>
+  {% else %}
+  <p class="t-subhead secondary">Create the username and password you'll use to log in to {{ site_title }}. There's no default login.</p>
+  <div class="group">
+    <label class="row"><span class="sr-only">Username</span><input name="username" placeholder="Username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus value="{{ request.query_params.get('u', '') }}"></label>
+    <label class="row"><span class="sr-only">Password</span><input name="password" type="password" placeholder="Password" autocomplete="new-password" minlength="8" required></label>
+    <label class="row"><span class="sr-only">Confirm password</span><input name="confirm" type="password" placeholder="Confirm Password" autocomplete="new-password" minlength="8" required></label>
+  </div>
+  <p class="login-foot t-footnote secondary">At least 8 characters. A passphrase of a few words is easiest to remember.</p>
+  <div class="group" style="margin-top:18px">
+    <label class="row"><span class="row-body">Authentication</span>
+      <select name="method"><option value="forms" selected>Login Page</option><option value="basic">Browser Popup</option></select></label>
+    <label class="row"><span class="row-body">Required</span>
+      <select name="required"><option value="enabled" selected>Always</option><option value="local">Not on Home Network</option></select></label>
+  </div>
+  <p class="login-foot t-footnote secondary">You can change these later in Settings.</p>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button class="btn-filled">Save</button>
+  {% endif %}
+</form>
+</body>
+</html>

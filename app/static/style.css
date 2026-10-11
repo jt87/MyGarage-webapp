@@ -448,7 +448,7 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
 .login .app-icon { width: 88px; height: 88px; border-radius: 20px; box-shadow: 0 0 0 .5px rgba(0,0,0,.1); margin-bottom: 14px; }
 .login h1 { font-size: 1.647rem; font-weight: 700; margin-bottom: 6px; }
 .login .group { margin: 24px 0 12px; text-align: left; }
-.login input { flex: 1; min-width: 0; border: 0; background: none; color: var(--label); font: inherit; font-size: max(16px, 1rem); padding: 0; height: 22px; outline: none; }
+.login input:not(.switch) { flex: 1; min-width: 0; border: 0; background: none; color: var(--label); font: inherit; font-size: max(16px, 1rem); padding: 0; height: 22px; outline: none; }
 .login input::placeholder { color: var(--tertiary-label); }
 .login .error { color: var(--destructive); margin: 0 0 12px; font-size: .882rem; }
 
@@ -476,3 +476,39 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
   .print-table img { width: 54px; height: 40px; object-fit: cover; }
   tr { break-inside: avoid; }
 }
+
+/* ------------------------------------------------------------------ form controls (Settings style) */
+/* UISwitch */
+.switch {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; position: relative; margin: -4px 0;
+  width: 51px; height: 31px; border-radius: 16px; background: var(--fill-2); cursor: pointer; transition: background .2s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 3px 1px rgba(0,0,0,.06); transition: transform .2s;
+}
+.switch:checked { background: var(--green); }
+.switch:checked::after { transform: translateX(20px); }
+/* Menu-style picker: value in secondary color with up/down chevrons */
+.row select {
+  -webkit-appearance: none; appearance: none; border: 0; background: transparent; color: var(--secondary-label);
+  font: inherit; font-size: max(16px, 1rem); letter-spacing: -.024em; text-align: right; text-align-last: right; cursor: pointer;
+  padding: 0 18px 0 0; margin: -6px 0; max-width: 60%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 16'%3E%3Cpath d='M2 6l3-3 3 3M2 10l3 3 3-3' fill='none' stroke='%238E8E93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right center; background-size: 10px 16px;
+}
+.row select:focus { outline: none; }
+.row-input, .login input:not(.switch) {
+  flex: 1; min-width: 0; border: 0; background: none; color: var(--label); padding: 0; height: 22px; outline: none;
+  font: inherit; font-size: max(16px, 1rem); letter-spacing: -.024em;
+}
+.row-input::placeholder { color: var(--tertiary-label); }
+.row[hidden] { display: none; }
+button.row.action { justify-content: flex-start; }
+.api-key { background: none; padding: 0; font-size: .82rem; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.row-body.text { display: block; line-height: 1.35; }
+.banner { margin: 0 0 20px; padding: 12px 16px; border-radius: var(--radius); font-size: .882rem; }
+.banner.ok { background: color-mix(in srgb, var(--green) 16%, var(--cell)); }
+.banner.err { background: color-mix(in srgb, var(--red) 14%, var(--cell)); color: var(--label); }
+.login-foot { text-align: left; padding: 0 16px; margin: -4px 0 16px; }
+.login .group + .group { margin-top: 0; }

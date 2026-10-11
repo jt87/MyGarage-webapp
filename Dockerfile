@@ -23,4 +23,6 @@ HEALTHCHECK --interval=60s --timeout=5s --start-period=120s \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)"
 
 ENTRYPOINT ["tini", "--"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# No --proxy-headers: the login treats the real TCP peer as the client address,
+# so a forged X-Forwarded-For header can never make a request look local.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

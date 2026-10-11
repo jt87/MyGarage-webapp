@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import csv
 import hashlib
 import hmac
 import io
+import json
 import logging
 import mimetypes
 import os
-import secrets
-import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,14 +24,13 @@ from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
                                  RedirectResponse, Response)
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import repo
+from . import auth, repo
 from .sync import RepoSync, Watcher
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -41,10 +40,7 @@ HERE = Path(__file__).parent
 REPO_PATH = Path(os.environ.get("REPO_PATH", "/data/repo")).resolve()
 CACHE_PATH = Path(os.environ.get("CACHE_PATH", "/data/cache")).resolve()
 SITE_TITLE = os.environ.get("SITE_TITLE", "MyGarage")
-AUTH_USER = os.environ.get("AUTH_USERNAME", "")
-AUTH_PASS = os.environ.get("AUTH_PASSWORD", "")
-SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
-COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", "/data/config/auth.json"))
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # "owner/name", for "Edit on GitHub" links
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 # How stale the cached clone may get before a page view asks GitHub (seconds).
@@ -60,10 +56,18 @@ sync = RepoSync(
 )
 inventory = Watcher(sync, lambda: repo.load(REPO_PATH))
 
+auth_cfg = auth.AuthConfig(CONFIG_PATH)
+sessions = auth.Sessions(auth_cfg)
+throttle = auth.LoginThrottle()
+# Optional: seed the first login from the environment instead of the setup screen.
+if not auth_cfg.configured and os.environ.get("AUTH_USERNAME") and os.environ.get("AUTH_PASSWORD"):
+    auth_cfg.set_credentials(os.environ["AUTH_USERNAME"], os.environ["AUTH_PASSWORD"])
+
 env = Environment(loader=FileSystemLoader(HERE / "templates"),
                   autoescape=select_autoescape(["html"]))
 env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
-                   github_repo=GITHUB_REPO, branch=sync.branch, auth_enabled=bool(AUTH_PASS))
+                   github_repo=GITHUB_REPO, branch=sync.branch, auth=auth_cfg,
+                   METHODS=auth.METHODS, REQUIRED=auth.REQUIRED)
 env.filters["q"] = lambda s: quote(str(s))
 
 
@@ -96,6 +100,8 @@ def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLRes
     ctx.setdefault("tab", TAB_FOR.get(request.url.path.split("/")[1], ""))
     ctx.setdefault("back", None)
     ctx.setdefault("title", "")
+    # Log Out only makes sense for a forms login with a real session.
+    ctx["can_logout"] = auth_cfg.method == "forms" and getattr(request.state, "via", "") == "session"
     return HTMLResponse(env.get_template(template).render(**ctx), status_code=status,
                         headers={"Cache-Control": "no-cache"})
 
@@ -322,58 +328,235 @@ async def github_webhook(request: Request):
 
 async def healthz(request: Request):
     ok = (REPO_PATH / "README.md").exists()
-    return JSONResponse({"ok": ok, **status()}, status_code=200 if ok else 503)
+    return JSONResponse({"ok": ok}, status_code=200 if ok else 503)
 
 
 # --------------------------------------------------------------------------- auth
 
-_failures: dict[str, list[float]] = {}
+def safe_next(value: str | None) -> str:
+    return value if value and value.startswith("/") and not value.startswith("//") else "/"
+
+
+def is_https(request: Request) -> bool:
+    return (request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https")
+
+
+def set_session(resp: Response, request: Request, remember: bool) -> Response:
+    token, max_age = sessions.issue(remember)
+    resp.set_cookie(auth.COOKIE, token, max_age=max_age, httponly=True, samesite="lax",
+                    secure=is_https(request), path="/")
+    return resp
+
+
+def plain_page(request: Request, template: str, status: int = 200, **ctx) -> HTMLResponse:
+    """Full-screen pages without the app chrome (setup, login)."""
+    html = env.get_template(template).render(request=request, **ctx)
+    return HTMLResponse(html, status_code=status, headers={"Cache-Control": "no-store"})
+
+
+def valid_username(name: str) -> bool:
+    return 1 <= len(name) <= 64 and name.strip() == name and all(c.isprintable() for c in name)
+
+
+async def setup(request: Request):
+    """First run: create the login (like the *arr "Authentication Required" dialog)."""
+    if auth_cfg.configured:
+        return RedirectResponse("/", status_code=303)
+    local = auth.is_local(request.scope)
+    error = ""
+    if request.method == "POST" and local:
+        form = await request.form()
+        username = str(form.get("username", "")).strip()
+        password = str(form.get("password", ""))
+        method = str(form.get("method", "forms"))
+        required = str(form.get("required", "enabled"))
+        if not valid_username(username):
+            error = "Enter a username."
+        elif len(password) < auth.MIN_PASSWORD:
+            error = f"Use at least {auth.MIN_PASSWORD} characters for the password."
+        elif password != form.get("confirm"):
+            error = "The passwords don't match."
+        elif method not in auth.METHODS or method == "external" or required not in auth.REQUIRED:
+            error = "Choose a login method."
+        else:
+            await anyio.to_thread.run_sync(auth_cfg.set_credentials, username, password)
+            auth_cfg.data.update(method=method, required=required)
+            auth_cfg.save()
+            return set_session(RedirectResponse("/", status_code=303), request, remember=True)
+    return plain_page(request, "setup.html", local=local, error=error,
+                      status=400 if error else 200)
 
 
 async def login(request: Request):
-    if not AUTH_PASS:
+    if not auth_cfg.configured:
+        return RedirectResponse("/setup", status_code=303)
+    if auth_cfg.method != "forms":
         return RedirectResponse("/", status_code=303)
+    nxt = safe_next(request.query_params.get("next"))
     error = ""
-    nxt = request.query_params.get("next", "/")
-    if not nxt.startswith("/") or nxt.startswith("//"):
-        nxt = "/"
     if request.method == "POST":
-        ip = request.client.host if request.client else "?"
-        recent = [t for t in _failures.get(ip, []) if time.time() - t < 900]
         form = await request.form()
-        user_ok = hmac.compare_digest(str(form.get("username", "")), AUTH_USER)
-        pass_ok = hmac.compare_digest(str(form.get("password", "")), AUTH_PASS)
-        if len(recent) >= 10:
+        key = auth.client_key(request.scope)
+        if throttle.blocked(key):
             error = "Too many attempts. Try again in 15 minutes."
-        elif user_ok and pass_ok:
-            request.session["user"] = AUTH_USER
-            _failures.pop(ip, None)
-            return RedirectResponse(nxt, status_code=303)
         else:
-            recent.append(time.time())
-            _failures[ip] = recent
-            error = "Wrong username or password."
-    html = env.get_template("login.html").render(error=error, next=nxt, request=request)
-    return HTMLResponse(html, status_code=401 if error else 200)
+            ok = await anyio.to_thread.run_sync(
+                auth_cfg.check, str(form.get("username", "")), str(form.get("password", "")))
+            if ok:
+                throttle.succeed(key)
+                return set_session(RedirectResponse(nxt, status_code=303), request,
+                                   remember=form.get("remember") == "on")
+            throttle.fail(key)
+            log_auth.warning("failed login from %s", key)
+            error = "Incorrect username or password."
+    return plain_page(request, "login.html", error=error, next=nxt, status=401 if error else 200)
 
 
 async def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return resp
 
 
-OPEN_PATHS = ("/login", "/static/", "/healthz", "/manifest.webmanifest", "/webhook/github")
+async def settings(request: Request):
+    return render(request, "settings.html", back=("/", SITE_TITLE), title="Settings", tab="garage",
+                  msg=request.query_params.get("msg", ""), error=request.query_params.get("error", ""))
+
+
+def back_to_settings(msg: str = "", error: str = "") -> RedirectResponse:
+    q = f"?msg={quote(msg)}" if msg else f"?error={quote(error)}" if error else ""
+    return RedirectResponse(f"/settings{q}", status_code=303)
+
+
+async def settings_security(request: Request):
+    form = await request.form()
+    if not await anyio.to_thread.run_sync(auth_cfg.check, auth_cfg.username,
+                                          str(form.get("current", ""))):
+        return back_to_settings(error="Your current password is incorrect.")
+    method, required = str(form.get("method")), str(form.get("required"))
+    if method not in auth.METHODS or required not in auth.REQUIRED:
+        return back_to_settings(error="Choose a login method.")
+    if method == "external" and form.get("confirm_external") != "on":
+        return back_to_settings(error="Confirm that your reverse proxy requires a login before choosing External.")
+    auth_cfg.data.update(method=method, required=required)
+    auth_cfg.save()
+    resp = back_to_settings(msg="Security settings saved.")
+    return set_session(resp, request, remember=True) if method == "forms" else resp
+
+
+async def settings_account(request: Request):
+    form = await request.form()
+    if not await anyio.to_thread.run_sync(auth_cfg.check, auth_cfg.username,
+                                          str(form.get("current", ""))):
+        return back_to_settings(error="Your current password is incorrect.")
+    username = str(form.get("username", "")).strip() or auth_cfg.username
+    new = str(form.get("password", ""))
+    if not valid_username(username):
+        return back_to_settings(error="Enter a username.")
+    if new and len(new) < auth.MIN_PASSWORD:
+        return back_to_settings(error=f"Use at least {auth.MIN_PASSWORD} characters for the password.")
+    if new and new != form.get("confirm"):
+        return back_to_settings(error="The new passwords don't match.")
+    if new:
+        # Changing the password signs out every other device, as it should.
+        await anyio.to_thread.run_sync(auth_cfg.set_credentials, username, new)
+    else:
+        auth_cfg.data["username"] = username
+        auth_cfg.revoke_sessions()
+    return set_session(back_to_settings(msg="Account updated. Other devices were logged out."),
+                       request, remember=True)
+
+
+async def settings_apikey(request: Request):
+    auth_cfg.regenerate_api_key()
+    return back_to_settings(msg="New API key created. Update any scripts that use the old one.")
+
+
+async def settings_sessions(request: Request):
+    auth_cfg.revoke_sessions()
+    resp = back_to_settings(msg="All other devices were logged out.")
+    return set_session(resp, request, remember=True) if auth_cfg.method == "forms" else resp
+
+
+log_auth = logging.getLogger("garage.auth")
+_basic_ok: dict[str, float] = {}   # sha256(Authorization header) -> expiry; skips re-hashing
+
+
+def _api_key_ok(request: Request) -> bool:
+    key = request.headers.get("x-api-key") or request.query_params.get("apikey") or ""
+    return bool(key) and hmac.compare_digest(key, auth_cfg.api_key)
+
+
+async def _basic_ok_for(request: Request) -> bool:
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("basic "):
+        return False
+    digest = hashlib.sha256((header + str(auth_cfg.data["session_version"])).encode()).hexdigest()
+    if _basic_ok.get(digest, 0) > time.time():
+        return True
+    key = auth.client_key(request.scope)
+    if throttle.blocked(key):
+        return False
+    try:
+        user, _, pw = base64.b64decode(header[6:]).decode().partition(":")
+    except (ValueError, UnicodeDecodeError):
+        return False
+    if await anyio.to_thread.run_sync(auth_cfg.check, user, pw):
+        _basic_ok[digest] = time.time() + 600
+        throttle.succeed(key)
+        return True
+    throttle.fail(key)
+    return False
+
+
+async def authenticate(request: Request) -> str | None:
+    """How this request is allowed in: external, local, api, session or basic."""
+    if auth_cfg.method == "external":
+        return "external"
+    if auth_cfg.required == "local" and auth.is_local(request.scope):
+        return "local"
+    if _api_key_ok(request):
+        return "api"
+    if auth_cfg.method == "basic":
+        return "basic" if await _basic_ok_for(request) else None
+    return "session" if sessions.user(request.cookies.get(auth.COOKIE)) else None
+
+
+# Never need a login: assets, the webhook (it checks GitHub's signature) and the health check.
+OPEN_PATHS = ("/static/", "/manifest.webmanifest", "/webhook/github", "/healthz")
 # Requests that don't render repo content skip the freshness check.
 NO_FRESH_PATHS = ("/static/", "/thumb/", "/files/", "/healthz", "/manifest.webmanifest",
-                  "/webhook/", "/login", "/logout", "/sync")
+                  "/webhook/", "/login", "/logout", "/setup", "/settings", "/sync")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        if AUTH_PASS and not request.url.path.startswith(OPEN_PATHS):
-            if request.session.get("user") != AUTH_USER:
-                return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
-        if request.method == "GET" and not request.url.path.startswith(NO_FRESH_PATHS):
+        path = request.url.path
+        if not path.startswith(OPEN_PATHS):
+            # Cross-site form posts are refused (SameSite cookies already block most).
+            origin = request.headers.get("origin")
+            if request.method == "POST" and origin and origin != "null":
+                if origin.split("://", 1)[-1] != request.headers.get("host", ""):
+                    return PlainTextResponse("Cross-site request refused", status_code=403)
+            if not auth_cfg.configured:
+                if path != "/setup":
+                    return RedirectResponse("/setup", status_code=303)
+            elif path != "/login":
+                via = await authenticate(request)
+                if not via:
+                    if auth_cfg.method == "basic":
+                        return PlainTextResponse("Login required", status_code=401, headers={
+                            "WWW-Authenticate": f'Basic realm="{SITE_TITLE}", charset="UTF-8"'})
+                    if request.method == "GET" and "text/html" in request.headers.get("accept", "text/html"):
+                        nxt = path + (f"?{request.url.query}" if request.url.query else "")
+                        return RedirectResponse(f"/login?next={quote(nxt)}", status_code=303)
+                    return PlainTextResponse("Login required", status_code=401)
+                if via == "api" and path.startswith("/settings"):
+                    return PlainTextResponse("The API key can't change security settings",
+                                             status_code=403)
+                request.state.via = via
+        if request.method == "GET" and not path.startswith(NO_FRESH_PATHS):
             # Pages come from the cached clone. If it hasn't been checked
             # against GitHub for FRESHNESS_SECONDS, check once first (off the
             # event loop). The webhook usually makes this a no-op.
@@ -422,8 +605,14 @@ routes = [
     Route("/thumb/{path:path}", thumb),
     Route("/sync", do_sync, methods=["POST"]),
     Route("/healthz", healthz),
+    Route("/setup", setup, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/logout", logout, methods=["POST"]),
+    Route("/settings", settings),
+    Route("/settings/security", settings_security, methods=["POST"]),
+    Route("/settings/account", settings_account, methods=["POST"]),
+    Route("/settings/apikey", settings_apikey, methods=["POST"]),
+    Route("/settings/sessions", settings_sessions, methods=["POST"]),
     Route("/manifest.webmanifest", manifest),
     Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
 ]
@@ -440,8 +629,6 @@ class PageGZip(GZipMiddleware):
 
 middleware = [
     Middleware(PageGZip, minimum_size=1024),
-    Middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="garage_session",
-               max_age=60 * 60 * 24 * 30, same_site="lax", https_only=COOKIE_SECURE),
     Middleware(AuthMiddleware),
 ]
 
