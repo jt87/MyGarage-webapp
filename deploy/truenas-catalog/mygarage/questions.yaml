@@ -1,0 +1,310 @@
+# MyGarage install form. Variable names follow the TrueNAS app library's
+# conventions (network.web_port, storage.data, run_as, labels, resources) so
+# the shared template helpers can read them; the wording and the choice of
+# options are MyGarage's own. Almost everything else is set up inside the app
+# on first run, so this form stays short.
+
+groups:
+  - name: MyGarage Configuration
+    description: Time zone and optional environment variables
+  - name: User and Group Configuration
+    description: Who owns MyGarage's files
+  - name: Network Configuration
+    description: How MyGarage is reached on your network
+  - name: Storage Configuration
+    description: Where MyGarage keeps its data
+  - name: Labels Configuration
+    description: Docker labels for the MyGarage container
+  - name: Resources Configuration
+    description: CPU and memory limits
+
+questions:
+  - variable: TZ
+    label: Timezone
+    group: MyGarage Configuration
+    schema:
+      type: string
+      required: true
+      default: Etc/UTC
+      $ref: [definitions/timezone]
+
+  - variable: mygarage
+    label: ""
+    group: MyGarage Configuration
+    schema:
+      type: dict
+      attrs:
+        - variable: additional_envs
+          label: Extra Environment Variables
+          description: |
+            Usually none are needed: the login, where your garage is stored and
+            GitHub are all set up in MyGarage itself the first time you open it.<br />
+            Optional examples: SITE_TITLE (the app's name), READ_ONLY=true (turn off
+            editing), MAX_UPLOAD_MB (largest file you can add).
+          schema:
+            type: list
+            default: []
+            items:
+              - variable: env
+                label: Variable
+                schema:
+                  type: dict
+                  attrs:
+                    - variable: name
+                      label: Name
+                      schema: {type: string, required: true}
+                    - variable: value
+                      label: Value
+                      schema: {type: string}
+
+  - variable: run_as
+    label: ""
+    group: User and Group Configuration
+    schema:
+      type: dict
+      attrs:
+        - variable: user
+          label: Run as User (UID)
+          description: MyGarage runs as this user and its files belong to it. 568 is TrueNAS's apps user.
+          schema: {type: int, required: true, min: 568, default: 568}
+        - variable: group
+          label: Run as Group (GID)
+          description: The group for MyGarage's files. 568 is TrueNAS's apps group.
+          schema: {type: int, required: true, min: 568, default: 568}
+
+  - variable: network
+    label: ""
+    group: Network Configuration
+    schema:
+      type: dict
+      attrs:
+        - variable: web_port
+          label: Web Port
+          schema:
+            type: dict
+            attrs:
+              - variable: bind_mode
+                label: Port Access
+                description: |
+                  Published makes MyGarage reachable from other devices, which is what you
+                  want unless a reverse proxy container on the same Docker network reaches it.
+                schema:
+                  type: string
+                  default: published
+                  enum:
+                    - {value: published, description: Published (reachable from your network)}
+                    - {value: exposed, description: Exposed (other containers only)}
+                    - {value: "", description: Neither}
+              - variable: port_number
+                label: Port
+                description: Open MyGarage at http://your-truenas-address:this-port
+                schema:
+                  type: int
+                  required: true
+                  min: 1
+                  max: 65535
+                  default: 31088
+              - variable: host_ips
+                label: Listen On
+                description: Only accept connections on these addresses of the TrueNAS host. Leave empty for all.
+                schema:
+                  type: list
+                  default: []
+                  show_if: [[bind_mode, "=", published]]
+                  items:
+                    - variable: host_ip
+                      label: Address
+                      schema:
+                        type: string
+                        required: true
+                        $ref: [definitions/node_bind_ip]
+        - variable: host_network
+          label: Use Host Network
+          description: Run MyGarage on the host's network instead of its own. Not needed for normal use.
+          schema: {type: boolean, default: false}
+
+  - variable: storage
+    label: ""
+    group: Storage Configuration
+    schema:
+      type: dict
+      attrs:
+        - variable: data
+          label: MyGarage Data
+          description: |
+            Your garage when it's kept on this server (Markdown, photos and manuals, with
+            their history), the thumbnail cache, and MyGarage's settings and login.
+            Include it in your snapshots and backups.
+          schema:
+            type: dict
+            attrs:
+              - variable: type
+                label: Kind
+                schema:
+                  type: string
+                  required: true
+                  default: ix_volume
+                  enum:
+                    - {value: ix_volume, description: ixVolume (a dataset TrueNAS creates for the app)}
+                    - {value: host_path, description: Host Path (a dataset or folder you already have)}
+              - variable: ix_volume_config
+                label: ixVolume Settings
+                schema:
+                  type: dict
+                  show_if: [[type, "=", ix_volume]]
+                  $ref: [normalize/ix_volume]
+                  attrs:
+                    - variable: acl_enable
+                      label: Use ACLs
+                      schema: {type: boolean, default: false}
+                    - variable: dataset_name
+                      label: Dataset Name
+                      schema: {type: string, required: true, hidden: true, default: data}
+                    - variable: acl_entries
+                      label: ACL Entries
+                      schema:
+                        type: dict
+                        show_if: [[acl_enable, "=", true]]
+                        attrs: []
+              - variable: host_path_config
+                label: Host Path Settings
+                schema:
+                  type: dict
+                  show_if: [[type, "=", host_path]]
+                  attrs:
+                    - variable: acl_enable
+                      label: Use ACLs
+                      schema: {type: boolean, default: false}
+                    - variable: acl
+                      label: ACL Entries
+                      schema:
+                        type: dict
+                        show_if: [[acl_enable, "=", true]]
+                        attrs: []
+                        $ref: [normalize/acl]
+                    - variable: path
+                      label: Path
+                      description: Moving from a YAML install? Choose the dataset it used and MyGarage carries on where it was.
+                      schema:
+                        type: hostpath
+                        required: true
+                        show_if: [[acl_enable, "=", false]]
+        - variable: additional_storage
+          label: Extra Storage
+          description: Not needed by MyGarage; for mounting anything else into the container.
+          schema:
+            type: list
+            default: []
+            items:
+              - variable: storageEntry
+                label: Mount
+                schema:
+                  type: dict
+                  attrs:
+                    - variable: type
+                      label: Kind
+                      schema:
+                        type: string
+                        required: true
+                        default: host_path
+                        enum:
+                          - {value: host_path, description: Host Path}
+                          - {value: ix_volume, description: ixVolume}
+                    - variable: read_only
+                      label: Read Only
+                      schema: {type: boolean, default: false}
+                    - variable: mount_path
+                      label: Path Inside the Container
+                      schema: {type: path, required: true}
+                    - variable: host_path_config
+                      label: Host Path Settings
+                      schema:
+                        type: dict
+                        show_if: [[type, "=", host_path]]
+                        attrs:
+                          - variable: acl_enable
+                            label: Use ACLs
+                            schema: {type: boolean, default: false}
+                          - variable: acl
+                            label: ACL Entries
+                            schema:
+                              type: dict
+                              show_if: [[acl_enable, "=", true]]
+                              attrs: []
+                              $ref: [normalize/acl]
+                          - variable: path
+                            label: Path
+                            schema:
+                              type: hostpath
+                              required: true
+                              show_if: [[acl_enable, "=", false]]
+                    - variable: ix_volume_config
+                      label: ixVolume Settings
+                      schema:
+                        type: dict
+                        show_if: [[type, "=", ix_volume]]
+                        $ref: [normalize/ix_volume]
+                        attrs:
+                          - variable: acl_enable
+                            label: Use ACLs
+                            schema: {type: boolean, default: false}
+                          - variable: dataset_name
+                            label: Dataset Name
+                            schema: {type: string, required: true, default: extra}
+                          - variable: acl_entries
+                            label: ACL Entries
+                            schema:
+                              type: dict
+                              show_if: [[acl_enable, "=", true]]
+                              attrs: []
+
+  - variable: labels
+    label: ""
+    group: Labels Configuration
+    schema:
+      type: list
+      default: []
+      items:
+        - variable: label
+          label: Docker Label
+          schema:
+            type: dict
+            attrs:
+              - variable: key
+                label: Name
+                schema: {type: string, required: true}
+              - variable: value
+                label: Value
+                schema: {type: string, required: true}
+              - variable: containers
+                label: Apply To
+                schema:
+                  type: list
+                  items:
+                    - variable: container
+                      label: Container
+                      schema:
+                        type: string
+                        required: true
+                        enum:
+                          - {value: mygarage, description: mygarage}
+
+  - variable: resources
+    label: ""
+    group: Resources Configuration
+    schema:
+      type: dict
+      attrs:
+        - variable: limits
+          label: Limits
+          schema:
+            type: dict
+            attrs:
+              - variable: cpus
+                label: CPUs
+                description: MyGarage is light; one CPU is plenty. Photo thumbnails are the busiest moment.
+                schema: {type: int, required: true, default: 1}
+              - variable: memory
+                label: Memory (MB)
+                description: 1 GB leaves room for large photo uploads and git.
+                schema: {type: int, required: true, default: 1024}

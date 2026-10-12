@@ -88,7 +88,11 @@ Either way you need a **fine-grained token**: GitHub → Settings → Developer 
 
 **Already set up with `GIT_REPO_URL` in the YAML (1.0)?** Nothing changes: the YAML wins and Settings shows it as set there. To manage storage in the app instead (and be able to switch), remove `GIT_REPO_URL`, `GIT_TOKEN` and `WEBHOOK_SECRET` and restart. The existing copy is then treated as kept on this server, so reconnect the same repo in Settings → Storage: Connect GitHub Backup, then Make GitHub the Primary Copy if you want GitHub to stay primary.
 
-**Building your own image.** Merging to `main` runs the GitHub Action that builds `ghcr.io/<owner>/mygarage`. Set the package's visibility to Public (profile → Packages → `mygarage` → Package settings) so TrueNAS can pull it; it holds only app code, never garage data.
+**TrueNAS App Catalog.** A catalog listing is being prepared (see [deploy/truenas-catalog/SUBMITTING.md](deploy/truenas-catalog/SUBMITTING.md)); until it's accepted, install with the YAML above.
+
+**Versions.** `latest` is the newest release and `edge` is the newest build of `main`; each release also has its own tag (`1.1.0`). See [CHANGELOG.md](CHANGELOG.md) and [RELEASING.md](RELEASING.md).
+
+**Building your own image.** Pushing a version tag runs the GitHub Action that builds `ghcr.io/<owner>/mygarage`. Set the package's visibility to Public (profile → Packages → `mygarage` → Package settings) so TrueNAS can pull it; it holds only app code, never garage data.
 
 ## Editing and offline use (1.1)
 
@@ -153,6 +157,7 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 | `MAX_UPLOAD_MB` | `50` | Largest photo or file you can add (GitHub's hard limit is 100) |
 | `GIT_AUTHOR_EMAIL` | `mygarage@users.noreply.github.com` | Email on commits made from the app |
 | `GITHUB_REPO` | (none) | Your data repo as `owner/name`; shows "Edit" links to the README on GitHub |
+| `PORT` | `8000` | Port the app listens on inside the container |
 | `SITE_TITLE` | `MyGarage` | App name: large title, first tab, Home Screen label |
 | `REPO_PATH` / `CACHE_PATH` | `/data/repo`, `/data/cache` | Where the clone and thumbnails live |
 
