@@ -50,6 +50,57 @@
   <p class="section-footer">For scripts and shortcuts: send it as an <code>X-Api-Key</code> header. For example, an iOS Shortcut can download <code>/insurance.csv</code> with it.</p>
 </div>
 
+<div class="section" id="storage">
+  <div class="section-header">Storage</div>
+  <div class="group">
+    {% if sync.mode == "github" %}
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub</span><span class="row-sub clip">{{ github_repo or sync.url }} · {{ sync.branch }}</span></span></div>
+    {% elif sync.mode == "server" %}
+    <div class="row has-icon">{{ tile("box", "indigo") }}<span class="row-body"><span class="row-title">This Server</span><span class="row-sub">With a history of every change</span></span></div>
+    {% if sync.url %}
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub Backup</span><span class="row-sub clip">{{ github_repo or sync.url }}</span>
+      <span class="row-sub {{ 'destructive' if sync.backup_error }}">{{ sync.backup_error or ('Last backup ' ~ (sync.last_backup|ago)) }}</span></span></div>
+    {% endif %}
+    {% else %}
+    <div class="row has-icon">{{ tile("folder", "brown") }}<span class="row-body"><span class="row-title">Folder on This Server</span><span class="row-sub">{{ store.repo_path }}</span></span></div>
+    {% endif %}
+  </div>
+  {% if store.env_locked %}
+  <p class="section-footer">Set in the app's YAML (<code>GIT_REPO_URL</code>). Remove it there to manage storage here.</p>
+  {% elif sync.mode == "server" and not sync.url %}
+  <p class="section-footer">Back up to GitHub for an off-site copy: create an <strong>empty private repo</strong> (don't add a README), then a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> for just that repo with Contents: Read and write.</p>
+  <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
+    <input type="hidden" name="action" value="connect">
+    <label class="row"><span class="sr-only">GitHub repo</span><input class="row-input" name="repo" placeholder="owner/my-garage" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+    <label class="row"><span class="sr-only">Token</span><input class="row-input" name="token" type="password" placeholder="Token" autocomplete="off" required></label>
+    <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password" required></label>
+    <button class="row action">Connect GitHub Backup</button>
+  </form>
+  {% elif sync.remote %}
+  <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
+    <input type="hidden" name="action" value="token">
+    <label class="row"><span class="sr-only">New token</span><input class="row-input" name="token" type="password" placeholder="New Token" autocomplete="off" required></label>
+    <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password" required></label>
+    <button class="row action">Replace Token</button>
+  </form>
+  <p class="section-footer">For when the token expires. {% if sync.mode == "server" %}Edits made on GitHub are brought in too.{% endif %}</p>
+  {% if sync.mode == "server" %}
+  <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
+    <input type="hidden" name="action" value="disconnect">
+    <button class="row action destructive" onclick="return confirm('Stop backing up to GitHub? Nothing is deleted there.')">Disconnect GitHub Backup</button>
+  </form>
+  {% endif %}
+  {% endif %}
+  {% if sync.remote and store.webhook_secret %}
+  <div class="group" style="margin-top:10px">
+    <div class="row kv selectable"><span class="kv-label">Webhook URL (optional, for instant updates)</span><span class="kv-value"><code>https://&lt;your domain&gt;/webhook/github</code></span></div>
+    <div class="row has-icon">{{ tile("key", "yellow") }}<span class="row-body"><code class="api-key" data-api-key data-value="{{ store.webhook_secret }}">••••••••••••••••••••••••</code></span>
+      <button class="buy-btn" type="button" data-reveal aria-label="Show webhook secret">{{ icon("eye") }}</button></div>
+  </div>
+  <p class="section-footer">In the GitHub repo: Settings → Webhooks → Add webhook. Content type <code>application/json</code>, this secret, "Just the push event". Without it, GitHub edits show up within 5 minutes of opening the app.</p>
+  {% endif %}
+</div>
+
 <div class="section" data-offline-settings>
   <div class="section-header">This Device</div>
   <div class="group">

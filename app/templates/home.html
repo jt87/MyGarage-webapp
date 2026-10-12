@@ -3,6 +3,10 @@
 {% set large = true %}
 {% block content %}
 <div class="large-title"><h1>{{ site_title }}</h1></div>
+{% if sync.mode == "github" and not sync.head %}
+<div class="banner ok" role="status">{% if sync.last_error %}Couldn't download from GitHub: {{ sync.last_error }}{% else %}Downloading your garage from GitHub. Photos and manuals can take a few minutes; this page refreshes when it's done.{% endif %}</div>
+<script>setTimeout(() => location.reload(), 5000);</script>
+{% endif %}
 
 <div class="cards">
   <a class="card" href="/tools" style="--tile: var(--orange)">
@@ -60,10 +64,10 @@
 
 <div class="section">
   <div class="group">
-    <form method="post" action="/sync"><button class="row action has-icon">{{ tile("refresh-cw", "blue") }}<span class="row-body">Check for Updates</span></button></form>
+    {% if sync.remote %}<form method="post" action="/sync"><button class="row action has-icon">{{ tile("refresh-cw", "blue") }}<span class="row-body">{{ 'Check for Updates' if sync.git_mode else 'Sync With GitHub' }}</span></button></form>{% endif %}
     {% if github_repo %}<a class="row action has-icon" href="https://github.com/{{ github_repo }}" target="_blank" rel="noopener">{{ tile("github", "gray") }}<span class="row-body">Open on GitHub</span></a>{% endif %}
   </div>
-  <p class="section-footer">{% include "_sync_status.html" %}{% if sync.git_mode %}. {{ sync.checks_today }} GitHub check{{ '' if sync.checks_today == 1 else 's' }} today.{% endif %}</p>
+  <p class="section-footer">{% include "_sync_status.html" %}{% if sync.remote %}. {{ sync.checks_today }} GitHub check{{ '' if sync.checks_today == 1 else 's' }} today.{% endif %}</p>
 </div>
 
 {% if can_logout %}

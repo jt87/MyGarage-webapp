@@ -565,3 +565,12 @@ input.row-input[type=date] { -webkit-appearance: none; appearance: none; text-al
 .empty > svg { width: 44px; height: 44px; color: var(--tertiary-label); stroke-width: 1.6; }
 .empty p { max-width: 32em; }
 @media print { .offline-bar, .outbox { display: none !important; } }
+
+/* ------------------------------------------------------------------ first-run storage (1.1) */
+.setup-storage .group.choice .row { align-items: flex-start; cursor: pointer; }
+.setup-storage .choice input[type=radio] { margin: 3px 2px 0 0; width: 20px; height: 20px; accent-color: var(--tint); flex: 0 0 auto; }
+.setup-storage .choice .row-sub { white-space: normal; }
+.setup-storage .when-github { display: none; }
+.setup-storage:has(input[name=where][value=github]:checked) .when-github { display: block; }
+.setup-storage a { color: var(--tint); }
+.setup-busy { display: flex; align-items: center; gap: 10px; }

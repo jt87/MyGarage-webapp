@@ -2,9 +2,11 @@
 
 A self-hosted website for your garage: browse tools with photos and specs, open manuals and other documents, follow buy links for consumables, view proof of purchase, print an insurance inventory, and read project plans (including a 3D viewer for STL files). From your phone you can log maintenance, add photos and receipts, edit a tool's details, and add new tools; each change is committed to your data repo. It works offline too, and edits made without a connection are sent when you're back.
 
-This repo is only the app. It contains no garage data. Your tools and projects live in a separate git repo of Markdown files and PDFs that you own (a **data repo**); start one from the sample at [jt87/MyGarage-dataset](https://github.com/jt87/MyGarage-dataset). That repo stays the source of truth. The server keeps a clone of it on your TrueNAS as its cache and renders every page from that, so browsing never waits on GitHub and keeps working if GitHub is down.
+This repo is only the app. It contains no garage data. Your tools and projects are a folder of Markdown files and PDFs with a git history of every change (a **data repo**; see the sample at [jt87/MyGarage-dataset](https://github.com/jt87/MyGarage-dataset)). The first-run screen asks where it lives: **on your server**, where it never needs another account, optionally backed up to a private GitHub repo; or **in a GitHub repo** you own, where the server keeps a copy and renders every page from it, so browsing never waits on GitHub and keeps working if GitHub is down.
 
-### How it stays current (and inside GitHub's free limits)
+### How it stays current with GitHub (and inside GitHub's free limits)
+
+This applies when GitHub is connected; a garage kept only on the server never talks to GitHub.
 
 Updates reach the server three ways, cheapest first:
 
@@ -47,14 +49,33 @@ In the consumables table, **bold** part numbers (e.g. `Acme **TS-547**`) become 
 
 You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docker.
 
-1. **Make the image pullable.** Merging this to `main` runs the GitHub Action that builds `ghcr.io/<owner>/mygarage` (for this repo, `ghcr.io/jt87/mygarage`). On GitHub, open your profile → Packages → `mygarage` → Package settings, and set visibility to **Public**. The image holds only the app code, never your garage data. (If you'd rather keep it private, add a GHCR registry credential in TrueNAS instead.)
-2. **Create a GitHub token.** GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only your data repo. Permissions: Contents → **Read and write**, so edits made in the app can be saved (choose Read-only, and set `READ_ONLY: "true"`, if you only want to browse). A public repo still needs a token for editing. Pick a long expiry and set a reminder; when it expires the site keeps showing the saved copy and the home screen says it can't reach GitHub.
-3. **Create a dataset** for the app's data, e.g. `tank/apps/mygarage`, and give the `apps` user (uid 568) full control of it. It holds a clone of the repo, a thumbnail cache and your login settings (`config/`). Only `config/` matters if you ever rebuild it.
-4. **Install.** Apps → Discover Apps → ⋮ (top right) → Install via YAML. Name it `mygarage` and paste [`deploy/truenas-compose.yaml`](deploy/truenas-compose.yaml), filling in each `CHANGE_ME`: the token, a webhook secret (run `openssl rand -hex 32` in a Mac Terminal) and the dataset path.
-5. **Create your login.** On your home Wi-Fi, open `http://<truenas-ip>:8088`. Like Sonarr and Radarr, there's no default login: the first screen asks you to create a username and password. For safety this screen only works from your home network, so nobody can claim the app if it's reachable from the internet before you've set it up.
-6. **Add the GitHub webhook** for instant updates, once the site is on your domain. On GitHub open your **data repo's** Settings → Webhooks → Add webhook. Set the payload URL to `https://garage.example.com/webhook/github`, the content type to `application/json`, and the secret to the same value as `WEBHOOK_SECRET`. Choose "Just the push event". Webhooks are free and don't count against any limit. If GitHub can't reach your server (for example, it's only on Tailscale), skip this; changes then show up within 5 minutes of opening the site. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
+1. **Create a dataset** for the app, e.g. `tank/apps/mygarage`, and give the `apps` user (uid 568) full control of it. It holds your garage (if you keep it on the server), a thumbnail cache, and your settings (`config/`).
+2. **Install.** Apps → Discover Apps → ⋮ (top right) → Install via YAML. Name it `mygarage`, paste [`deploy/truenas-compose.yaml`](deploy/truenas-compose.yaml), and change the one `CHANGE_ME`: the dataset path.
+3. **Open it on your home Wi-Fi** at `http://<truenas-ip>:8088` and follow the two setup screens:
+   - **Create your login.** Like Sonarr and Radarr there's no default login. For safety this screen only works from your home network, so nobody can claim the app if it's reachable from the internet before you've set it up.
+   - **Choose where your garage lives.** *On This Server* keeps everything in the dataset, with a history of every change, and needs no other accounts. *In a GitHub Repo* uses a repo you own as the source (paste `owner/name` and a token; see [Using GitHub](#using-github)). Then start empty, or with a few made-up example tools to see how it looks.
 
-To update the app later, open it in Apps and choose Update (or Pull Image, then restart) after a new image is built.
+That's it. Add it to your iPhone's Home Screen (Share → Add to Home Screen), and see [Put it on your domain](#put-it-on-your-domain) to use it away from home and offline.
+
+To update the app later, open it in Apps and choose Update (or Pull Image, then restart).
+
+### Using GitHub
+
+GitHub can play either of two parts, and both are optional:
+
+| | Kept on this server, GitHub as backup | GitHub as the source |
+|---|---|---|
+| Choose it | Settings → Storage → Connect GitHub Backup, any time | The setup screen, *In a GitHub Repo* |
+| If GitHub is down | Nothing changes; edits are sent when it's back | Browsing works from the saved copy; edits wait on the device |
+| Edits made on GitHub | Brought in | Brought in |
+
+Either way you need a **fine-grained token**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate, access to only your data repo, Contents: **Read and write**. Pick a long expiry and set a reminder; replace it in Settings → Storage when it runs out. For a backup, create an **empty private repo** first (don't tick "Add a README"). For GitHub as the source, start from the [sample dataset](https://github.com/jt87/MyGarage-dataset), or give it an empty repo and the app fills it.
+
+**Instant updates (optional).** Settings → Storage shows a webhook secret. On GitHub open the data repo's Settings → Webhooks → Add webhook: payload URL `https://garage.example.com/webhook/github`, content type `application/json`, that secret, "Just the push event". Without it, changes made on GitHub show up within 5 minutes of opening the app. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
+
+**Already set up with `GIT_REPO_URL` in the YAML (1.0)?** Nothing changes: the YAML wins and Settings shows it as set there. Remove `GIT_REPO_URL`, `GIT_TOKEN` and `WEBHOOK_SECRET` to manage storage in the app instead; it then keeps the existing copy as a server-first garage, so connect the same repo as its backup.
+
+**Building your own image.** Merging to `main` runs the GitHub Action that builds `ghcr.io/<owner>/mygarage`. Set the package's visibility to Public (profile → Packages → `mygarage` → Package settings) so TrueNAS can pull it; it holds only app code, never garage data.
 
 ## Editing and offline use (1.1)
 
@@ -105,10 +126,10 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GIT_REPO_URL` | (none) | Your data repo to clone. Leave unset to read a folder mounted at `REPO_PATH` instead |
-| `GIT_BRANCH` | `main` | Branch to follow |
+| `GIT_REPO_URL` | (none) | Optional: a GitHub data repo as the source, instead of choosing on the setup screen. Locks the choice |
+| `GIT_BRANCH` | `main` | Branch to use |
 | `GIT_TOKEN` | (none) | GitHub token (Contents: Read and write for editing); sent as a header, never written to disk |
-| `WEBHOOK_SECRET` | (none) | Enables `/webhook/github` for instant updates on push |
+| `WEBHOOK_SECRET` | (made up) | Secret for `/webhook/github`; by default one is made when GitHub is connected and shown in Settings |
 | `FRESHNESS_SECONDS` | `300` | A page view checks GitHub first if the last check is older than this |
 | `SYNC_INTERVAL` | `1800` | Seconds between background checks (minimum 60). "Check for Updates" on the home screen checks right away |
 | `CONFIG_PATH` | `/data/config/auth.json` | Where the login settings are kept |
@@ -123,9 +144,9 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 ## Run it locally
 
 ```
-git clone https://github.com/jt87/MyGarage-dataset.git ../MyGarage-dataset   # or your own data repo
 pip install -r requirements.txt
-REPO_PATH=../MyGarage-dataset CACHE_PATH=/tmp/garage-cache uvicorn app.main:app --reload
+REPO_PATH=/tmp/garage/repo CACHE_PATH=/tmp/garage/cache CONFIG_PATH=/tmp/garage/config/auth.json \
+  uvicorn app.main:app --reload
 ```
 
-Then open <http://localhost:8000>. Tests: `pip install pytest httpx && python -m pytest -q`. They build a small made-up data repo in a temp folder (`tests/fixture.py`), so they need no real data.
+Then open <http://localhost:8000> and go through the setup screens (start with the examples). To try an existing data repo instead, point `REPO_PATH` at a clone of it. Tests: `pip install pytest httpx && python -m pytest -q`. They build a small made-up data repo in a temp folder (`tests/fixture.py`), so they need no real data.

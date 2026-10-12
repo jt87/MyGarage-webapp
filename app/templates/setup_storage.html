@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+{% include "_auth_head.html" %}
+<title>Set Up · {{ site_title }}</title>
+</head>
+<body class="login-body">
+<form class="login setup-storage" method="post" action="/setup/storage">
+  <img class="app-icon" src="/static/apple-touch-icon.png" alt="">
+  <h1>Where Should Your Garage Live?</h1>
+  <p class="t-subhead secondary">Your tools, photos and manuals are kept as Markdown files and PDFs, with a history of every change. You can connect a GitHub backup later in Settings.</p>
+
+  <div class="group choice">
+    <label class="row"><input type="radio" name="where" value="server" {% if where != "github" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>On This Server</strong></span><span class="row-sub">Everything stays on your server. Nothing to sign up for.</span></span></label>
+    <label class="row"><input type="radio" name="where" value="github" {% if where == "github" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>In a GitHub Repo</strong></span><span class="row-sub">GitHub holds the files and the server keeps a copy. Edit on GitHub or here.</span></span></label>
+  </div>
+
+  <div class="when-github">
+    <div class="group">
+      <label class="row"><span class="sr-only">GitHub repo</span><input name="repo" value="{{ repo }}" placeholder="owner/my-garage" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="row"><span class="sr-only">Token</span><input name="token" type="password" placeholder="Token (needed for a private repo)" autocomplete="off"></label>
+      <label class="row"><span class="sr-only">Branch</span><input name="branch" value="{{ branch or 'main' }}" placeholder="main" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    </div>
+    <p class="login-foot t-footnote secondary">Make a token at GitHub → Settings → Developer settings → <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained tokens</a>: only this repo, Contents: Read and write. An empty repo is filled with the starting point below; one that already has a garage is used as is (start from the <a href="https://github.com/jt87/MyGarage-dataset" target="_blank" rel="noopener">sample dataset</a>).</p>
+  </div>
+
+  <div class="group choice">
+    <label class="row"><input type="radio" name="starter" value="empty" {% if starter != "sample" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>Start Empty</strong></span><span class="row-sub">Add your first tool with the + button.</span></span></label>
+    <label class="row"><input type="radio" name="starter" value="sample" {% if starter == "sample" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>Start With Examples</strong></span><span class="row-sub">Two made-up tools and a project, to see how it looks. Delete them anytime.</span></span></label>
+  </div>
+  <p class="login-foot t-footnote secondary">If the server's data folder already holds a garage, it's kept and this is skipped.</p>
+
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button class="btn-filled">Continue</button>
+</form>
+</body>
+</html>

@@ -28,6 +28,7 @@ import base64
 import json
 import logging
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -78,8 +79,14 @@ def _today() -> str:
 
 class RepoSync:
     def __init__(self, path: Path, url: str = "", branch: str = "main", token: str = "",
-                 interval: int = 1800, state_file: Path | None = None):
+                 interval: int = 1800, state_file: Path | None = None, mode: str | None = None):
         self.path = path
+        # github: GitHub is the source and this is a cache of it.
+        # server: this server's own git repo is the source; `url`, if set, is a
+        #         GitHub repo it backs up to (and takes edits made there from).
+        # folder: a plain folder you manage yourself; no history.
+        # "":     not set up yet.
+        self.mode = mode if mode is not None else ("github" if url else "folder")
         self.url = url
         self.branch = branch
         self.token = token
@@ -89,6 +96,8 @@ class RepoSync:
         self.last_error = ""
         self.last_checked: datetime | None = None   # last time GitHub was asked
         self.last_changed: datetime | None = None   # last time new content arrived
+        self.backup_error = ""                      # server mode: why the last backup failed
+        self.last_backup: datetime | None = None    # server mode: last time GitHub matched
         self._checked_at = 0.0                      # wall clock, persisted
         self._recent: deque[float] = deque()        # check times in the last hour
         self.checks_today = 0
@@ -100,16 +109,44 @@ class RepoSync:
 
     @property
     def git_mode(self) -> bool:
-        return bool(self.url)
+        """GitHub is the source of truth (the server keeps a cache)."""
+        return self.mode == "github"
+
+    @property
+    def remote(self) -> bool:
+        """There's a GitHub repo to check: the source, or a backup."""
+        return bool(self.url) and self.mode in ("github", "server")
+
+    @property
+    def versioned(self) -> bool:
+        return self.mode in ("github", "server")
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.mode)
+
+    def configure(self, mode: str, url: str = "", token: str = "", branch: str = "") -> None:
+        with self._lock:
+            self.mode, self.url, self.token = mode, url, token
+            self.branch = branch or self.branch
+            self.last_error = self.backup_error = ""
+            self._checked_at = 0.0
+            self.head = self._head_quietly()
+        self.trigger()
+
+    def _head_quietly(self) -> str:
+        if not (self.path / ".git").exists():
+            return ""
+        try:
+            return self._git("rev-parse", "HEAD", cwd=self.path)
+        except Exception:
+            return ""
 
     # ------------------------------------------------------------------ state
 
     def _load_state(self) -> None:
-        if self.git_mode and (self.path / ".git").exists():
-            try:
-                self.head = self._git("rev-parse", "HEAD", cwd=self.path)
-            except Exception:
-                pass
+        if self.versioned:
+            self.head = self._head_quietly()
         if not self.state_file or not self.state_file.exists():
             return
         try:
@@ -151,10 +188,12 @@ class RepoSync:
 
     # ------------------------------------------------------------------ git
 
-    def _git(self, *args: str, cwd: Path | None = None, timeout: int = 600) -> str:
+    def _git(self, *args: str, cwd: Path | None = None, timeout: int = 600,
+             ok: tuple[int, ...] = (0,), want_code: bool = False, token: str | None = None):
+        token = self.token if token is None else token
         cmd = ["git", "-c", "advice.detachedHead=false"]
-        if self.token:
-            cred = base64.b64encode(f"x-access-token:{self.token}".encode()).decode()
+        if token:
+            cred = base64.b64encode(f"x-access-token:{token}".encode()).decode()
             cmd += ["-c", f"http.extraHeader=Authorization: Basic {cred}"]
         cmd += list(args)
         # safe.directory via env so git's own subprocesses see it too: the
@@ -164,10 +203,14 @@ class RepoSync:
                "GIT_CONFIG_VALUE_0": "*"}
         res = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True,
                              timeout=timeout)
+        if want_code and (res.returncode == 0 or res.returncode in ok):
+            return res.returncode
+        if res.returncode in ok and res.returncode != 0:
+            return ""
         if res.returncode != 0:
             msg = (res.stderr or res.stdout).strip()
-            if self.token:
-                msg = msg.replace(self.token, "***")
+            if token:
+                msg = msg.replace(token, "***")
             lines = msg.splitlines()
             fatal = next((l for l in lines if l.startswith(("fatal:", "error:"))), "")
             err = RuntimeError(fatal or (lines[-1] if lines else f"git {args[0]} failed"))
@@ -178,7 +221,7 @@ class RepoSync:
     def sync_once(self) -> bool:
         """Clone or fetch the branch tip. Returns True if HEAD changed."""
         if not self.git_mode:
-            return False
+            return self.sync_backup() if self.remote else False
         with self._lock:
             try:
                 if not (self.path / ".git").exists():
@@ -220,7 +263,7 @@ class RepoSync:
         Concurrent callers wait for the one check in flight. If GitHub can't
         be reached, the cached copy keeps being served.
         """
-        if not self.git_mode or time.time() - self._checked_at < max_age:
+        if not self.remote or time.time() - self._checked_at < max_age:
             return False
         with self._lock:
             now = time.time()
@@ -238,15 +281,25 @@ class RepoSync:
                 out = self._git("ls-remote", self.url, f"refs/heads/{self.branch}", timeout=10)
                 remote = out.split()[0] if out else ""
                 self.last_checked = datetime.now(timezone.utc)
-                self.last_error = "" if remote else f"branch {self.branch} not found on GitHub"
+                if self.git_mode:
+                    self.last_error = "" if remote else f"branch {self.branch} not found on GitHub"
+                else:
+                    self.backup_error = ""
             except Exception as e:
-                self.last_error = str(e)
+                if self.git_mode:
+                    self.last_error = str(e)
+                else:
+                    self.backup_error = friendly_git_error(getattr(e, "detail", str(e)))
                 log.warning("remote check failed: %s", e)
+                return False
             finally:
                 self._save_state()
-        if remote and remote != self.head:
-            return self.sync_once()
-        return False
+        if self.git_mode:
+            return self.sync_once() if remote and remote != self.head else False
+        if remote == self.head:
+            self.last_backup = datetime.now(timezone.utc)
+            return False
+        return self.sync_backup()  # GitHub has edits, or this server has unsent ones
 
     # ------------------------------------------------------------------ writes
 
@@ -261,8 +314,10 @@ class RepoSync:
         changed. Raises WriteError, or whatever `mutate` raises.
         """
         with self._lock:
-            if not self.git_mode:
+            if self.mode == "folder":
                 return bool(mutate(self.path))
+            if self.mode == "server":
+                return self._write_local(mutate, message, author)
             for attempt in range(3):
                 try:
                     self._git("fetch", "--depth", "1", self.url, self.branch, cwd=self.path)
@@ -307,12 +362,172 @@ class RepoSync:
                 return True
             raise WriteError("GitHub kept changing while saving. Try again.", retry=True)
 
-    def _reset_quietly(self) -> None:
-        for args in (("reset", "--hard", "FETCH_HEAD"), ("clean", "-fdq")):
+    def _commit(self, paths: list[str], message: str, author: str) -> bool:
+        self._git("add", "-A", "--", *paths, cwd=self.path)
+        if not self._git("status", "--porcelain", "--", *paths, cwd=self.path):
+            return False
+        self._git("-c", f"user.name={author}", "-c", f"user.email={COMMIT_EMAIL}",
+                  "commit", "-q", "-m", message, cwd=self.path)
+        return True
+
+    def _write_local(self, mutate, message: str, author: str) -> bool:
+        """Server mode: commit here; the GitHub backup, if any, follows."""
+        try:
+            paths = mutate(self.path)
+            if not paths or not self._commit(paths, message, author):
+                self._reset_quietly("HEAD")
+                return False
+        except BaseException:
+            self._reset_quietly("HEAD")
+            raise
+        self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+        self.last_changed = datetime.now(timezone.utc)
+        self._save_state()
+        log.info("committed %s: %s", self.head[:7], message.splitlines()[0])
+        if self.url:
+            self._push_backup()
+        return True
+
+    # ------------------------------------------------------------------ server mode
+
+    def init_local(self, starter: Path | None = None) -> None:
+        """Start (or adopt) this server's own repo, optionally from a starter folder."""
+        with self._lock:
+            self.path.mkdir(parents=True, exist_ok=True)
+            fresh = not (self.path / ".git").exists()
+            if fresh:
+                self._git("init", "-q", "-b", self.branch, cwd=self.path)
+            seeded = bool(starter) and not (self.path / "README.md").exists()
+            if seeded:
+                shutil.copytree(starter, self.path, dirs_exist_ok=True)
+            if not self._git("status", "--porcelain", cwd=self.path) and not fresh:
+                self.head = self._head_quietly()
+                return
+            self._git("add", "-A", cwd=self.path)
+            msg = "Start MyGarage" if seeded else "Add existing files"
+            self._git("-c", "user.name=MyGarage", "-c", f"user.email={COMMIT_EMAIL}",
+                      "commit", "-q", "--allow-empty", "-m", msg, cwd=self.path)
+            self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+            self.last_changed = datetime.now(timezone.utc)
+            self._save_state()
+
+    def seed_remote(self, starter: Path | None) -> None:
+        """Fill an empty GitHub repo from a starter, so GitHub mode can begin there."""
+        self.init_local(starter)
+        with self._lock:
+            try:
+                self._git("push", "-q", self.url, f"HEAD:refs/heads/{self.branch}",
+                          cwd=self.path, timeout=300)
+            except RuntimeError as e:
+                raise WriteError(friendly_git_error(getattr(e, "detail", str(e)))) from e
+
+    def _push_backup(self) -> bool:
+        """Best effort: a failed backup never loses or blocks an edit."""
+        try:
+            self._git("push", "-q", self.url, f"HEAD:refs/heads/{self.branch}",
+                      cwd=self.path, timeout=300)
+        except RuntimeError as e:
+            detail = getattr(e, "detail", str(e))
+            if any(s in detail for s in ("[rejected]", "fetch first", "non-fast-forward")):
+                self.backup_error = "Waiting to bring in changes made on GitHub."
+                self.trigger()
+            else:
+                self.backup_error = friendly_git_error(detail)
+            log.warning("backup push failed: %s", e)
+            return False
+        self.backup_error = ""
+        self.last_backup = datetime.now(timezone.utc)
+        return True
+
+    def sync_backup(self) -> bool:
+        """Server mode: take edits made on GitHub and send this server's.
+
+        GitHub's commits are fast-forwarded in, or this server's unsent
+        commits are replayed on top of them. If both changed the same lines,
+        nothing here is touched and the backup pauses with a message.
+        Returns True if this server's files changed.
+        """
+        if self.mode != "server" or not self.url:
+            return False
+        with self._lock:
+            try:
+                remote = self._git("ls-remote", self.url, f"refs/heads/{self.branch}", timeout=30)
+                if not remote:  # an empty GitHub repo: send everything
+                    self._push_backup()
+                    return False
+                self._git("fetch", "-q", self.url, self.branch, cwd=self.path)
+                self._count("fetch")
+                theirs = self._git("rev-parse", "FETCH_HEAD", cwd=self.path)
+                head = self._git("rev-parse", "HEAD", cwd=self.path)
+                changed = False
+                if theirs == head:
+                    pass
+                elif self._is_ancestor(theirs, head):
+                    pass                     # only this server has new commits
+                elif self._is_ancestor(head, theirs):
+                    self._git("merge", "-q", "--ff-only", "FETCH_HEAD", cwd=self.path)
+                    changed = True
+                elif not self._git("merge-base", "HEAD", "FETCH_HEAD", cwd=self.path, ok=(1,)):
+                    self.backup_error = ("That GitHub repo has different history. Connect an "
+                                         "empty repo (don't add a README when creating it).")
+                    return False
+                else:
+                    try:
+                        self._git("-c", "user.name=MyGarage", "-c", f"user.email={COMMIT_EMAIL}",
+                                  "rebase", "-q", "FETCH_HEAD", cwd=self.path)
+                        changed = True
+                    except RuntimeError:
+                        self._git("rebase", "--abort", cwd=self.path, ok=(0, 128))
+                        self.backup_error = ("This server and GitHub both changed the same "
+                                             "part of a file. Backup is paused; this server's "
+                                             "copy is kept. Undo the GitHub edit to resume.")
+                        return False
+                self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+                if self.head != theirs:
+                    self._push_backup()
+                else:
+                    self.backup_error = ""
+                    self.last_backup = datetime.now(timezone.utc)
+                if changed:
+                    self.last_changed = datetime.now(timezone.utc)
+                    log.info("took GitHub edits; now at %s", self.head[:7])
+                return changed
+            except RuntimeError as e:
+                self.backup_error = friendly_git_error(getattr(e, "detail", str(e)))
+                log.warning("backup sync failed: %s", e)
+                return False
+            finally:
+                self.last_checked = datetime.now(timezone.utc)
+                self._checked_at = time.time()
+                self._save_state()
+
+    def _is_ancestor(self, a: str, b: str) -> bool:
+        return self._git("merge-base", "--is-ancestor", a, b, cwd=self.path, ok=(1,),
+                         want_code=True) == 0
+
+    def check_remote(self, url: str, token: str, branch: str) -> str:
+        """Can this repo be reached with this token? Returns its branch tip ("" if
+        the branch doesn't exist yet). Raises WriteError with a readable reason."""
+        try:
+            out = self._git("ls-remote", url, f"refs/heads/{branch}", timeout=30, token=token)
+            return out.split()[0] if out else ""
+        except RuntimeError as e:
+            detail = getattr(e, "detail", str(e)).lower()
+            if any(s in detail for s in ("not found", "403", "401", "authentication",
+                                         "could not read username")):
+                raise WriteError("GitHub couldn't find that repo with this token. Check the "
+                                 "address, and that the token can access the repo.") from e
+            raise WriteError(friendly_git_error(getattr(e, "detail", str(e))),
+                             retry=True) from e
+
+    def _reset_quietly(self, to: str = "FETCH_HEAD") -> None:
+        for args in (("reset", "--hard", to), ("clean", "-fdq")):
             try:
                 self._git(*args, cwd=self.path)
             except RuntimeError as e:
                 log.warning("could not reset after a failed write: %s", e)
+            if to == "HEAD" and args[0] == "clean":
+                break
 
     # ------------------------------------------------------------------ loop
 
@@ -320,13 +535,15 @@ class RepoSync:
         self._wake.set()
 
     def start(self, on_change) -> None:
-        if not self.git_mode:
-            return
+        """Background checks. Runs in every mode, so storage chosen later in
+        the app (first-run setup, Settings) takes effect without a restart."""
 
         def loop():
             backoff = 60
             while True:
-                if not (self.path / ".git").exists():
+                if not self.remote:
+                    changed, wait = False, 60
+                elif self.git_mode and not (self.path / ".git").exists():
                     # No clone yet (bad token, GitHub down): retry, backing off to
                     # SYNC_INTERVAL so a misconfiguration can't hammer GitHub.
                     changed = self.sync_once()
@@ -342,8 +559,8 @@ class RepoSync:
         threading.Thread(target=loop, name="repo-sync", daemon=True).start()
 
     def fingerprint(self) -> str:
-        """Cheap change detector for mounted (non-git) mode."""
-        if self.git_mode:
+        """Cheap change detector: HEAD, or file times for a plain folder."""
+        if self.versioned:
             return self.head
         latest, count = 0.0, 0
         for d in ("", "tools", "projects", "reference"):

@@ -14,6 +14,7 @@ import mimetypes
 import os
 import re
 import shutil
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,7 +33,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import auth, edit, repo
+from . import auth, edit, repo, storage
 from .sync import RepoSync, Watcher, WriteError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -58,8 +59,7 @@ REPO_PATH = Path(os.environ.get("REPO_PATH", "/data/repo")).resolve()
 CACHE_PATH = Path(os.environ.get("CACHE_PATH", "/data/cache")).resolve()
 SITE_TITLE = os.environ.get("SITE_TITLE", "MyGarage")
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", "/data/config/auth.json"))
-GITHUB_REPO = setting("GITHUB_REPO")  # "owner/name", for "Edit on GitHub" links
-WEBHOOK_SECRET = setting("WEBHOOK_SECRET")
+GITHUB_REPO_ENV = setting("GITHUB_REPO")  # "owner/name", for "Edit on GitHub" links
 # How stale the cached clone may get before a page view asks GitHub (seconds).
 FRESHNESS_SECONDS = float(os.environ.get("FRESHNESS_SECONDS", "300"))
 # READ_ONLY=true hides every way to change the data repo from the app.
@@ -67,13 +67,18 @@ READ_ONLY = os.environ.get("READ_ONLY", "").strip().lower() in ("1", "true", "ye
 # GitHub rejects files over 100 MB and warns over 50 MB.
 MAX_UPLOAD_MB = min(95, int(os.environ.get("MAX_UPLOAD_MB", "50")))
 
+store = storage.StorageConfig(
+    CONFIG_PATH.parent / "storage.json", REPO_PATH,
+    env_url=setting("GIT_REPO_URL"), env_token=setting("GIT_TOKEN"),
+    env_branch=os.environ.get("GIT_BRANCH", ""), env_webhook_secret=setting("WEBHOOK_SECRET"))
 sync = RepoSync(
     REPO_PATH,
-    url=setting("GIT_REPO_URL"),
-    branch=os.environ.get("GIT_BRANCH", "main"),
-    token=setting("GIT_TOKEN"),
+    url=store.url,
+    branch=store.branch,
+    token=store.token,
     interval=int(os.environ.get("SYNC_INTERVAL", "1800")),
     state_file=CACHE_PATH / "sync-state.json",
+    mode=store.mode,
 )
 inventory = Watcher(sync, lambda: repo.load(REPO_PATH))
 
@@ -99,10 +104,21 @@ def static_version() -> str:
 STATIC_VERSION = static_version()
 
 env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
-                   github_repo=GITHUB_REPO, branch=sync.branch, auth=auth_cfg,
+                   github_repo="", branch=sync.branch, auth=auth_cfg, store=store,
                    METHODS=auth.METHODS, REQUIRED=auth.REQUIRED, v=STATIC_VERSION,
                    editable=not READ_ONLY, max_upload_mb=MAX_UPLOAD_MB)
 env.filters["q"] = lambda s: quote(str(s))
+
+
+def apply_storage() -> None:
+    """Point the app at the storage in `store` (at startup and after a change)."""
+    sync.configure(store.mode, store.url, store.token, store.branch)
+    env.globals.update(github_repo=GITHUB_REPO_ENV or storage.github_slug(store.url),
+                       branch=sync.branch)
+    inventory.invalidate()
+
+
+env.globals.update(github_repo=GITHUB_REPO_ENV or storage.github_slug(store.url))
 
 
 def ago(dt: datetime | None) -> str:
@@ -658,7 +674,7 @@ async def offline_manifest(request: Request):
     pages += [r.url for r in inv.references]
     if not READ_ONLY:
         pages.append("/tools/new")
-    version = sync.head if sync.git_mode else sync.fingerprint()
+    version = sync.fingerprint()
     return JSONResponse({"version": f"{version}:{STATIC_VERSION}",
                          "pages": list(dict.fromkeys(pages)),
                          "thumbs": list(dict.fromkeys(thumbs)), "files": files},
@@ -755,7 +771,7 @@ async def thumb(request: Request):
 
 async def do_sync(request: Request):
     """"Check for Updates": asks GitHub, at most once per 15 seconds."""
-    if sync.git_mode:
+    if sync.remote:
         await anyio.to_thread.run_sync(sync.ensure_fresh, 15)
     inventory.invalidate()
     if "application/json" in request.headers.get("accept", ""):
@@ -768,7 +784,8 @@ async def do_sync(request: Request):
 
 def status() -> dict:
     return {
-        "mode": "git" if sync.git_mode else "mounted",
+        "mode": sync.mode or "setup",
+        "backup_error": sync.backup_error or None,
         "head": sync.head[:7],
         "last_checked": sync.last_checked.isoformat() if sync.last_checked else None,
         "checks_today": sync.checks_today,
@@ -780,13 +797,14 @@ def status() -> dict:
 
 async def github_webhook(request: Request):
     """GitHub push webhook: pull right away instead of waiting for a page view."""
-    if not WEBHOOK_SECRET:
+    secret = store.webhook_secret
+    if not secret or not sync.remote:
         raise HTTPException(404)
     if int(request.headers.get("content-length") or 0) > 2_000_000:
         return PlainTextResponse("too large", status_code=413)
     body = await request.body()
     sig = request.headers.get("x-hub-signature-256", "")
-    want = "sha256=" + hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    want = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, want):
         return PlainTextResponse("bad signature", status_code=401)
     if request.headers.get("x-github-event") == "push":
@@ -803,7 +821,8 @@ async def github_webhook(request: Request):
 
 
 async def healthz(request: Request):
-    ok = (REPO_PATH / "README.md").exists()
+    # Healthy while waiting for setup or the first download, too.
+    ok = not sync.configured or bool(sync.head) or (REPO_PATH / "README.md").exists()
     return JSONResponse({"ok": ok}, status_code=200 if ok else 503)
 
 
@@ -873,9 +892,99 @@ async def setup(request: Request):
             await anyio.to_thread.run_sync(auth_cfg.set_credentials, username, password)
             auth_cfg.data.update(method=method, required=required)
             auth_cfg.save()
-            return set_session(RedirectResponse("/", status_code=303), request, remember=True)
+            nxt = "/" if sync.configured else "/setup/storage"
+            return set_session(RedirectResponse(nxt, status_code=303), request, remember=True)
     return plain_page(request, "setup.html", local=local, error=error,
                       status=400 if error else 200)
+
+
+# --------------------------------------------------------------------------- storage setup
+
+async def setup_storage(request: Request):
+    """First run, step 2: where the garage data lives."""
+    if sync.configured:
+        return RedirectResponse("/", status_code=303)
+    ctx = {"where": "server", "starter": "empty", "repo": "", "branch": "main", "error": ""}
+    if request.method == "GET":
+        return plain_page(request, "setup_storage.html", **ctx)
+    form = await request.form()
+    ctx.update({k: str(form.get(k, ctx[k])).strip() for k in ("where", "starter", "repo", "branch")})
+    starter = storage.STARTERS / ("sample" if ctx["starter"] == "sample" else "empty")
+    try:
+        if ctx["where"] == "github":
+            msg = await connect_github_source(ctx["repo"], str(form.get("token", "")).strip(),
+                                              ctx["branch"] or "main", starter)
+        else:
+            store.set(mode="server", url="", token="", branch=sync.branch)
+            apply_storage()
+            await anyio.to_thread.run_sync(sync.init_local, starter)
+            msg = "Your garage is ready"
+    except WriteError as e:
+        return plain_page(request, "setup_storage.html", status=400, **{**ctx, "error": str(e)})
+    inventory.invalidate()
+    return RedirectResponse(with_query("/", "msg", msg), status_code=303)
+
+
+async def connect_github_source(repo_text: str, token: str, branch: str, starter: Path) -> str:
+    url = storage.normalize_repo_url(repo_text)
+    if not url:
+        raise WriteError("Enter the GitHub repo, like owner/my-garage.")
+    tip = await anyio.to_thread.run_sync(sync.check_remote, url, token, branch)
+    if REPO_PATH.exists() and any(REPO_PATH.iterdir()) and not (REPO_PATH / ".git").exists():
+        raise WriteError(f"The data folder ({REPO_PATH}) already has files. Empty it to use "
+                         "GitHub, or choose On This Server to keep them.")
+    if not tip:
+        # An empty repo: start it here and send it up.
+        sync.configure("server", url, token, branch)
+        await anyio.to_thread.run_sync(sync.seed_remote, starter)
+    store.set(mode="github", url=url, token=token, branch=branch)
+    apply_storage()
+    if not tip:
+        return "Your garage is ready and saved to GitHub"
+    # Downloading can take a while with lots of photos and manuals: do it in
+    # the background; the home screen says so meanwhile.
+    def first_download():
+        if sync.sync_once():
+            inventory.invalidate()
+    threading.Thread(target=first_download, name="first-clone", daemon=True).start()
+    return "Downloading your garage from GitHub"
+
+
+async def settings_storage(request: Request):
+    """Connect or disconnect the GitHub backup, or replace the token."""
+    form = await request.form()
+    action = str(form.get("action", ""))
+    if store.env_locked:
+        return back_to_settings(error="Storage is set in the app's YAML (GIT_REPO_URL).")
+    if action == "disconnect" and sync.mode == "server":
+        store.set(url="", token="")
+        apply_storage()
+        return back_to_settings(msg="GitHub backup disconnected. Nothing was deleted on GitHub.")
+    if not await anyio.to_thread.run_sync(auth_cfg.check, auth_cfg.username,
+                                          str(form.get("current", ""))):
+        return back_to_settings(error="Your current password is incorrect.")
+    token = str(form.get("token", "")).strip()
+    try:
+        if action == "connect" and sync.mode == "server":
+            url = storage.normalize_repo_url(str(form.get("repo", "")))
+            if not url:
+                return back_to_settings(error="Enter the GitHub repo, like owner/my-garage.")
+            await anyio.to_thread.run_sync(sync.check_remote, url, token, sync.branch)
+            store.set(url=url, token=token)
+            apply_storage()
+            await anyio.to_thread.run_sync(sync.sync_backup)
+            inventory.invalidate()
+            if sync.backup_error:
+                return back_to_settings(error=f"Connected, but the backup didn't finish: {sync.backup_error}")
+            return back_to_settings(msg="Backed up to GitHub. Every change from now on is sent there too.")
+        if action == "token" and sync.remote:
+            await anyio.to_thread.run_sync(sync.check_remote, store.url, token, sync.branch)
+            store.set(token=token)
+            apply_storage()
+            return back_to_settings(msg="Token updated.")
+    except WriteError as e:
+        return back_to_settings(error=str(e))
+    return back_to_settings(error="That change isn't available for this storage.")
 
 
 async def login(request: Request):
@@ -1048,6 +1157,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     return PlainTextResponse("The API key can't change security settings",
                                              status_code=403)
                 request.state.via = via
+                if not sync.configured and not path.startswith(("/setup", "/logout")):
+                    if request.method == "GET" and "text/html" in request.headers.get("accept", "text/html"):
+                        return RedirectResponse("/setup/storage", status_code=303)
+                    return PlainTextResponse("Finish setting up first", status_code=503)
         if request.method == "GET" and not path.startswith(NO_FRESH_PATHS):
             # Pages come from the cached clone. If it hasn't been checked
             # against GitHub for FRESHNESS_SECONDS, check once first (off the
@@ -1106,6 +1219,7 @@ routes = [
     Route("/sync", do_sync, methods=["POST"]),
     Route("/healthz", healthz),
     Route("/setup", setup, methods=["GET", "POST"]),
+    Route("/setup/storage", setup_storage, methods=["GET", "POST"]),
     Route("/login", login, methods=["GET", "POST"]),
     Route("/logout", logout, methods=["POST"]),
     Route("/settings", settings),
@@ -1113,6 +1227,7 @@ routes = [
     Route("/settings/account", settings_account, methods=["POST"]),
     Route("/settings/apikey", settings_apikey, methods=["POST"]),
     Route("/settings/sessions", settings_sessions, methods=["POST"]),
+    Route("/settings/storage", settings_storage, methods=["POST"]),
     Route("/manifest.webmanifest", manifest),
     Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
 ]
@@ -1136,11 +1251,12 @@ middleware = [
 @contextlib.asynccontextmanager
 async def lifespan(app):
     CACHE_PATH.mkdir(parents=True, exist_ok=True)
-    if sync.git_mode:
-        if not (REPO_PATH / ".git").exists():
-            await anyio.to_thread.run_sync(sync.sync_once)  # first clone before serving
-        # An existing clone is served right away; the loop checks GitHub when due.
-        sync.start(inventory.invalidate)
+    if sync.git_mode and not (REPO_PATH / ".git").exists():
+        await anyio.to_thread.run_sync(sync.sync_once)  # first clone before serving
+    elif sync.mode == "server" and not (REPO_PATH / ".git").exists():
+        await anyio.to_thread.run_sync(sync.init_local, None)
+    # An existing copy is served right away; the loop checks GitHub when due.
+    sync.start(inventory.invalidate)
     yield
 
 

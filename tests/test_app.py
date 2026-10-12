@@ -126,7 +126,9 @@ def test_webhook_requires_signature(monkeypatch):
 
     from app import main
 
-    monkeypatch.setattr(main, "WEBHOOK_SECRET", "s3cret")
+    monkeypatch.setattr(main.store, "env_webhook_secret", "s3cret")
+    monkeypatch.setattr(main.sync, "mode", "server")  # a GitHub repo is connected
+    monkeypatch.setattr(main.sync, "url", "https://example.invalid/r.git")
     body = b'{"ref":"refs/heads/main"}'
     good = "sha256=" + _hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
     hdr = {"X-GitHub-Event": "ping", "Content-Type": "application/json"}
@@ -168,7 +170,9 @@ def test_webhook_ignores_other_branches(monkeypatch):
 
     from app import main
 
-    monkeypatch.setattr(main, "WEBHOOK_SECRET", "s3cret")
+    monkeypatch.setattr(main.store, "env_webhook_secret", "s3cret")
+    monkeypatch.setattr(main.sync, "mode", "server")  # a GitHub repo is connected
+    monkeypatch.setattr(main.sync, "url", "https://example.invalid/r.git")
     fetched = []
     monkeypatch.setattr(main.sync, "ensure_fresh", lambda age: fetched.append(age) or False)
 
@@ -364,7 +368,9 @@ def test_damaged_login_file_is_never_treated_as_new(tmp_path):
 
 
 def test_webhook_rejects_huge_bodies(monkeypatch):
-    monkeypatch.setattr(main, "WEBHOOK_SECRET", "s")
+    monkeypatch.setattr(main.store, "env_webhook_secret", "s")
+    monkeypatch.setattr(main.sync, "mode", "server")
+    monkeypatch.setattr(main.sync, "url", "https://example.invalid/r.git")
     assert client.post("/webhook/github", content=b"x" * 3_000_000).status_code == 413
 
 

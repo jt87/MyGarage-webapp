@@ -187,16 +187,22 @@
   });
 
   // ---------------------------------------------------------------- settings
-  const keyEl = $("[data-api-key]");
-  const reveal = $("[data-reveal]");
-  if (keyEl && reveal) reveal.addEventListener("click", () => {
-    const shown = keyEl.textContent === keyEl.dataset.value;
-    keyEl.textContent = shown ? "•".repeat(24) : keyEl.dataset.value;
-    reveal.setAttribute("aria-label", shown ? "Show API key" : "Hide API key");
+  // Each secret's row has its own reveal (and maybe copy) button.
+  $$("[data-reveal]").forEach((reveal) => {
+    const keyEl = $("[data-api-key]", reveal.closest(".row"));
+    if (!keyEl) return;
+    const label = reveal.getAttribute("aria-label");
+    reveal.addEventListener("click", () => {
+      const shown = keyEl.textContent === keyEl.dataset.value;
+      keyEl.textContent = shown ? "•".repeat(24) : keyEl.dataset.value;
+      reveal.setAttribute("aria-label", shown ? label : label.replace("Show", "Hide"));
+    });
   });
-  const copyKey = $("[data-copy-key]");
-  if (keyEl && copyKey) copyKey.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(keyEl.dataset.value); toast("API Key Copied"); } catch {}
+  $$("[data-copy-key]").forEach((copyKey) => {
+    const keyEl = $("[data-api-key]", copyKey.closest(".row"));
+    if (keyEl) copyKey.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(keyEl.dataset.value); toast("API Key Copied"); } catch {}
+    });
   });
   const methodSel = $("[data-method]");
   const extRow = $("[data-external-confirm]");
