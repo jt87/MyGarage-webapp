@@ -571,6 +571,7 @@ input.row-input[type=date] { -webkit-appearance: none; appearance: none; text-al
 .setup-storage .choice input[type=radio] { margin: 3px 2px 0 0; width: 20px; height: 20px; accent-color: var(--tint); flex: 0 0 auto; }
 .setup-storage .choice .row-sub { white-space: normal; }
 .setup-storage .when-github { display: none; }
-.setup-storage:has(input[name=where][value=github]:checked) .when-github { display: block; }
+.setup-storage:has(input[name=where][value=github]:checked) .when-github,
+.setup-storage:has(input[name=where][value=server_backup]:checked) .when-github { display: block; }
 .setup-storage a { color: var(--tint); }
 .setup-busy { display: flex; align-items: center; gap: 10px; }

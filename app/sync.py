@@ -411,6 +411,61 @@ class RepoSync:
             self.last_changed = datetime.now(timezone.utc)
             self._save_state()
 
+    # ------------------------------------------------------------------ switching
+
+    def clone_full(self) -> None:
+        """Server mode from an existing GitHub garage: all of its history, here."""
+        with self._lock:
+            if (self.path / ".git").exists() or (self.path.exists() and any(self.path.iterdir())):
+                raise WriteError(f"The data folder ({self.path}) already has files.")
+            self.path.mkdir(parents=True, exist_ok=True)
+            try:
+                self._git("clone", "-q", "--branch", self.branch, self.url, str(self.path))
+            except RuntimeError as e:
+                raise WriteError(friendly_git_error(getattr(e, "detail", str(e))), retry=True) from e
+            self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+            self.last_changed = self.last_backup = datetime.now(timezone.utc)
+            self._save_state()
+
+    def make_server_primary(self) -> None:
+        """GitHub -> this server. GitHub stays connected as the backup.
+
+        The copy here was a one-commit cache, so the full history comes down
+        first; nothing changes if GitHub can't be reached.
+        """
+        if self.mode != "github":
+            return
+        with self._lock:
+            try:
+                if (self.path / ".git" / "shallow").exists():
+                    self._git("fetch", "-q", "--unshallow", self.url, self.branch, cwd=self.path)
+                else:
+                    self._git("fetch", "-q", self.url, self.branch, cwd=self.path)
+                self._git("reset", "-q", "--hard", "FETCH_HEAD", cwd=self.path)
+                self._git("clean", "-fdq", cwd=self.path)
+            except RuntimeError as e:
+                raise WriteError(friendly_git_error(getattr(e, "detail", str(e))), retry=True) from e
+            self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+            self.mode = "server"
+            self.last_backup = datetime.now(timezone.utc)
+            self.backup_error = self.last_error = ""
+            self._save_state()
+
+    def make_github_primary(self) -> None:
+        """This server -> GitHub. Everything here is sent first; refuses if it can't be."""
+        if self.mode != "server" or not self.url:
+            raise WriteError("Connect a GitHub repo first.")
+        self.sync_backup()
+        if self.backup_error:
+            raise WriteError(f"GitHub isn't up to date yet: {self.backup_error}")
+        with self._lock:
+            out = self._git("ls-remote", self.url, f"refs/heads/{self.branch}", timeout=30)
+            if not out or out.split()[0] != self.head:
+                raise WriteError("GitHub isn't up to date yet. Try again in a moment.", retry=True)
+            self.mode = "github"
+            self.last_error = ""
+            self._save_state()
+
     def seed_remote(self, starter: Path | None) -> None:
         """Fill an empty GitHub repo from a starter, so GitHub mode can begin there."""
         self.init_local(starter)

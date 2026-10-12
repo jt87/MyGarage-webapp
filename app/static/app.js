@@ -204,6 +204,12 @@
       try { await navigator.clipboard.writeText(keyEl.dataset.value); toast("API Key Copied"); } catch {}
     });
   });
+  // Storage: confirm a switch of the primary copy before sending it.
+  $$("[data-confirm-actions]").forEach((f) => f.addEventListener("submit", (e) => {
+    const msg = e.submitter && e.submitter.dataset.confirm;
+    if (msg && !confirm(msg)) e.preventDefault();
+    else if (e.submitter) setTimeout(() => { e.submitter.textContent = "Working…"; }, 0);
+  }));
   const methodSel = $("[data-method]");
   const extRow = $("[data-external-confirm]");
   if (methodSel && extRow) methodSel.addEventListener("change", () => { extRow.hidden = methodSel.value !== "external"; });

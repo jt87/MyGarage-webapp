@@ -910,10 +910,12 @@ async def setup_storage(request: Request):
     form = await request.form()
     ctx.update({k: str(form.get(k, ctx[k])).strip() for k in ("where", "starter", "repo", "branch")})
     starter = storage.STARTERS / ("sample" if ctx["starter"] == "sample" else "empty")
+    token, branch = str(form.get("token", "")).strip(), ctx["branch"] or "main"
     try:
         if ctx["where"] == "github":
-            msg = await connect_github_source(ctx["repo"], str(form.get("token", "")).strip(),
-                                              ctx["branch"] or "main", starter)
+            msg = await connect_github_source(ctx["repo"], token, branch, starter)
+        elif ctx["where"] == "server_backup":
+            msg = await connect_server_with_backup(ctx["repo"], token, branch, starter)
         else:
             store.set(mode="server", url="", token="", branch=sync.branch)
             apply_storage()
@@ -925,12 +927,51 @@ async def setup_storage(request: Request):
     return RedirectResponse(with_query("/", "msg", msg), status_code=303)
 
 
+def folder_has_files() -> bool:
+    return REPO_PATH.exists() and any(REPO_PATH.iterdir())
+
+
+def in_background(name: str, fn) -> None:
+    """Downloads can take a while with lots of photos and manuals; the home
+    screen says what's happening meanwhile."""
+    def run():
+        try:
+            fn()
+        except Exception as e:  # shown on the home screen
+            sync.last_error = str(e)
+            logging.getLogger("garage").warning("%s failed: %s", name, e)
+        inventory.invalidate()
+    threading.Thread(target=run, name=name, daemon=True).start()
+
+
+async def connect_server_with_backup(repo_text: str, token: str, branch: str, starter: Path) -> str:
+    """This server is the primary copy; a GitHub repo is its backup."""
+    url = storage.normalize_repo_url(repo_text)
+    if not url:
+        raise WriteError("Enter the GitHub repo, like owner/my-garage.")
+    tip = await anyio.to_thread.run_sync(sync.check_remote, url, token, branch)
+    if tip:
+        # A garage already on GitHub: bring all of it here, then keep it backed up.
+        if folder_has_files():
+            raise WriteError(f"The data folder ({REPO_PATH}) already has files. Empty it to "
+                             "bring in the GitHub garage, or choose On This Server to keep them.")
+        store.set(mode="server", url=url, token=token, branch=branch)
+        apply_storage()
+        in_background("first-clone", sync.clone_full)
+        return "Bringing your garage over from GitHub"
+    store.set(mode="server", url=url, token=token, branch=branch)
+    apply_storage()
+    await anyio.to_thread.run_sync(sync.init_local, starter)
+    await anyio.to_thread.run_sync(sync.sync_backup)
+    return "Your garage is ready and backed up to GitHub"
+
+
 async def connect_github_source(repo_text: str, token: str, branch: str, starter: Path) -> str:
     url = storage.normalize_repo_url(repo_text)
     if not url:
         raise WriteError("Enter the GitHub repo, like owner/my-garage.")
     tip = await anyio.to_thread.run_sync(sync.check_remote, url, token, branch)
-    if REPO_PATH.exists() and any(REPO_PATH.iterdir()) and not (REPO_PATH / ".git").exists():
+    if folder_has_files() and not (REPO_PATH / ".git").exists():
         raise WriteError(f"The data folder ({REPO_PATH}) already has files. Empty it to use "
                          "GitHub, or choose On This Server to keep them.")
     if not tip:
@@ -941,17 +982,12 @@ async def connect_github_source(repo_text: str, token: str, branch: str, starter
     apply_storage()
     if not tip:
         return "Your garage is ready and saved to GitHub"
-    # Downloading can take a while with lots of photos and manuals: do it in
-    # the background; the home screen says so meanwhile.
-    def first_download():
-        if sync.sync_once():
-            inventory.invalidate()
-    threading.Thread(target=first_download, name="first-clone", daemon=True).start()
+    in_background("first-clone", sync.sync_once)
     return "Downloading your garage from GitHub"
 
 
 async def settings_storage(request: Request):
-    """Connect or disconnect the GitHub backup, or replace the token."""
+    """Change where the garage lives: which copy is primary, and the GitHub backup."""
     form = await request.form()
     action = str(form.get("action", ""))
     if store.env_locked:
@@ -965,7 +1001,8 @@ async def settings_storage(request: Request):
         return back_to_settings(error="Your current password is incorrect.")
     token = str(form.get("token", "")).strip()
     try:
-        if action == "connect" and sync.mode == "server":
+        if action in ("connect", "primary_github") and sync.mode == "server" and not sync.url:
+            # Switching to GitHub from a server-only garage connects it first.
             url = storage.normalize_repo_url(str(form.get("repo", "")))
             if not url:
                 return back_to_settings(error="Enter the GitHub repo, like owner/my-garage.")
@@ -976,13 +1013,33 @@ async def settings_storage(request: Request):
             inventory.invalidate()
             if sync.backup_error:
                 return back_to_settings(error=f"Connected, but the backup didn't finish: {sync.backup_error}")
-            return back_to_settings(msg="Backed up to GitHub. Every change from now on is sent there too.")
+            if action == "connect":
+                return back_to_settings(msg="Backed up to GitHub. Every change from now on is sent there too.")
+        if action == "primary_github" and sync.mode == "server":
+            await anyio.to_thread.run_sync(sync.make_github_primary)
+            store.set(mode="github")
+            apply_storage()
+            return back_to_settings(msg="GitHub is now the primary copy. This server keeps a copy "
+                                        "of it, and edits made here are saved to GitHub.")
+        if action == "primary_server" and sync.mode == "github":
+            await anyio.to_thread.run_sync(sync.make_server_primary)
+            store.set(mode="server")
+            apply_storage()
+            return back_to_settings(msg="This server is now the primary copy, with its full "
+                                        "history. GitHub stays connected as the backup.")
+        if action == "history" and sync.mode == "folder":
+            store.set(mode="server", url="", token="")
+            apply_storage()
+            await anyio.to_thread.run_sync(sync.init_local, None)
+            inventory.invalidate()
+            return back_to_settings(msg="This server now keeps a history of every change.")
         if action == "token" and sync.remote:
             await anyio.to_thread.run_sync(sync.check_remote, store.url, token, sync.branch)
             store.set(token=token)
             apply_storage()
             return back_to_settings(msg="Token updated.")
     except WriteError as e:
+        apply_storage()  # whatever happened, run with what's saved
         return back_to_settings(error=str(e))
     return back_to_settings(error="That change isn't available for this storage.")
 

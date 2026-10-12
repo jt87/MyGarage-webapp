@@ -3,7 +3,7 @@
 {% set large = true %}
 {% block content %}
 <div class="large-title"><h1>{{ site_title }}</h1></div>
-{% if sync.mode == "github" and not sync.head %}
+{% if sync.remote and not sync.head %}
 <div class="banner ok" role="status">{% if sync.last_error %}Couldn't download from GitHub: {{ sync.last_error }}{% else %}Downloading your garage from GitHub. Photos and manuals can take a few minutes; this page refreshes when it's done.{% endif %}</div>
 <script>setTimeout(() => location.reload(), 5000);</script>
 {% endif %}

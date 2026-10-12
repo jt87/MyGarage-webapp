@@ -53,7 +53,7 @@ You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docke
 2. **Install.** Apps → Discover Apps → ⋮ (top right) → Install via YAML. Name it `mygarage`, paste [`deploy/truenas-compose.yaml`](deploy/truenas-compose.yaml), and change the one `CHANGE_ME`: the dataset path.
 3. **Open it on your home Wi-Fi** at `http://<truenas-ip>:8088` and follow the two setup screens:
    - **Create your login.** Like Sonarr and Radarr there's no default login. For safety this screen only works from your home network, so nobody can claim the app if it's reachable from the internet before you've set it up.
-   - **Choose where your garage lives.** *On This Server* keeps everything in the dataset, with a history of every change, and needs no other accounts. *In a GitHub Repo* uses a repo you own as the source (paste `owner/name` and a token; see [Using GitHub](#using-github)). Then start empty, or with a few made-up example tools to see how it looks.
+   - **Choose where your garage lives.** *On This Server* keeps everything in the dataset, with a history of every change, and needs no other accounts. *On This Server, Backed Up to GitHub* does the same and also sends every change to a private GitHub repo. *GitHub as the Primary Copy* makes a GitHub repo the source and the server keeps a copy. The two GitHub choices ask for the repo (`owner/name`) and a token; see [Using GitHub](#using-github). Then start empty, or with a few made-up example tools to see how it looks. You can switch later in Settings → Storage.
 
 That's it. Add it to your iPhone's Home Screen (Share → Add to Home Screen), and see [Put it on your domain](#put-it-on-your-domain) to use it away from home and offline.
 
@@ -61,19 +61,32 @@ To update the app later, open it in Apps and choose Update (or Pull Image, then 
 
 ### Using GitHub
 
-GitHub can play either of two parts, and both are optional:
+GitHub is optional, and can be either the backup or the primary copy:
 
-| | Kept on this server, GitHub as backup | GitHub as the source |
+| | This server primary, GitHub backup | GitHub primary |
 |---|---|---|
-| Choose it | Settings → Storage → Connect GitHub Backup, any time | The setup screen, *In a GitHub Repo* |
-| If GitHub is down | Nothing changes; edits are sent when it's back | Browsing works from the saved copy; edits wait on the device |
+| Where edits are saved first | This server, then sent to GitHub | GitHub, then copied to the server |
+| If GitHub is down | Nothing changes; edits go up when it's back | Browsing works from the saved copy; edits wait on the device |
 | Edits made on GitHub | Brought in | Brought in |
+| History on the server | All of it | Latest version only |
 
-Either way you need a **fine-grained token**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate, access to only your data repo, Contents: **Read and write**. Pick a long expiry and set a reminder; replace it in Settings → Storage when it runs out. For a backup, create an **empty private repo** first (don't tick "Add a README"). For GitHub as the source, start from the [sample dataset](https://github.com/jt87/MyGarage-dataset), or give it an empty repo and the app fills it.
+**Switching** is in Settings → Storage and asks for your password:
+
+| From | Button | What happens |
+|---|---|---|
+| This server only | Connect GitHub Backup | Everything goes up to an empty GitHub repo; every change after that follows |
+| This server only or with a backup | Make GitHub the Primary Copy | Everything is sent to GitHub first; refuses (and changes nothing) if GitHub can't be reached or doesn't match |
+| GitHub primary | Make This Server the Primary Copy | GitHub's full history comes down first, and GitHub stays connected as the backup |
+| Backup connected | Disconnect GitHub Backup | The server stops sending; nothing is deleted on GitHub |
+| A plain folder (1.0) | Keep History on This Server | The folder becomes a garage with history, so a backup can be connected |
+
+If a GitHub garage already exists, *On This Server, Backed Up to GitHub* on the setup screen brings all of it to the server and keeps it backed up there.
+
+Either way you need a **fine-grained token**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate, access to only your data repo, Contents: **Read and write**. Pick a long expiry and set a reminder; replace it in Settings → Storage when it runs out. For a new garage, create an **empty private repo** (don't tick "Add a README") and the app fills it; a repo that already holds a garage is used as is.
 
 **Instant updates (optional).** Settings → Storage shows a webhook secret. On GitHub open the data repo's Settings → Webhooks → Add webhook: payload URL `https://garage.example.com/webhook/github`, content type `application/json`, that secret, "Just the push event". Without it, changes made on GitHub show up within 5 minutes of opening the app. If Cloudflare Access or another login sits in front of the site, let `/webhook/github` through, since it checks GitHub's signature itself.
 
-**Already set up with `GIT_REPO_URL` in the YAML (1.0)?** Nothing changes: the YAML wins and Settings shows it as set there. Remove `GIT_REPO_URL`, `GIT_TOKEN` and `WEBHOOK_SECRET` to manage storage in the app instead; it then keeps the existing copy as a server-first garage, so connect the same repo as its backup.
+**Already set up with `GIT_REPO_URL` in the YAML (1.0)?** Nothing changes: the YAML wins and Settings shows it as set there. To manage storage in the app instead (and be able to switch), remove `GIT_REPO_URL`, `GIT_TOKEN` and `WEBHOOK_SECRET` and restart. The existing copy is then treated as kept on this server, so reconnect the same repo in Settings → Storage: Connect GitHub Backup, then Make GitHub the Primary Copy if you want GitHub to stay primary.
 
 **Building your own image.** Merging to `main` runs the GitHub Action that builds `ghcr.io/<owner>/mygarage`. Set the package's visibility to Public (profile → Packages → `mygarage` → Package settings) so TrueNAS can pull it; it holds only app code, never garage data.
 

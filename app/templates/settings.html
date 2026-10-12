@@ -54,37 +54,58 @@
   <div class="section-header">Storage</div>
   <div class="group">
     {% if sync.mode == "github" %}
-    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub</span><span class="row-sub clip">{{ github_repo or sync.url }} · {{ sync.branch }}</span></span></div>
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">Primary Copy: GitHub</span><span class="row-sub clip">{{ github_repo or sync.url }} · {{ sync.branch }}</span></span></div>
+    <div class="row has-icon">{{ tile("box", "indigo") }}<span class="row-body"><span class="row-title">This Server</span><span class="row-sub">Keeps a copy of GitHub's latest version</span></span></div>
     {% elif sync.mode == "server" %}
-    <div class="row has-icon">{{ tile("box", "indigo") }}<span class="row-body"><span class="row-title">This Server</span><span class="row-sub">With a history of every change</span></span></div>
+    <div class="row has-icon">{{ tile("box", "indigo") }}<span class="row-body"><span class="row-title">Primary Copy: This Server</span><span class="row-sub">With a history of every change</span></span></div>
     {% if sync.url %}
     <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub Backup</span><span class="row-sub clip">{{ github_repo or sync.url }}</span>
       <span class="row-sub {{ 'destructive' if sync.backup_error }}">{{ sync.backup_error or ('Last backup ' ~ (sync.last_backup|ago)) }}</span></span></div>
+    {% else %}
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub Backup</span><span class="row-sub">Not connected</span></span></div>
     {% endif %}
     {% else %}
-    <div class="row has-icon">{{ tile("folder", "brown") }}<span class="row-body"><span class="row-title">Folder on This Server</span><span class="row-sub">{{ store.repo_path }}</span></span></div>
+    <div class="row has-icon">{{ tile("folder", "brown") }}<span class="row-body"><span class="row-title">Folder on This Server</span><span class="row-sub">{{ store.repo_path }} · no history</span></span></div>
     {% endif %}
   </div>
+
   {% if store.env_locked %}
   <p class="section-footer">Set in the app's YAML (<code>GIT_REPO_URL</code>). Remove it there to manage storage here.</p>
-  {% elif sync.mode == "server" and not sync.url %}
-  <p class="section-footer">Back up to GitHub for an off-site copy: create an <strong>empty private repo</strong> (don't add a README), then a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> for just that repo with Contents: Read and write.</p>
-  <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
-    <input type="hidden" name="action" value="connect">
-    <label class="row"><span class="sr-only">GitHub repo</span><input class="row-input" name="repo" placeholder="owner/my-garage" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
-    <label class="row"><span class="sr-only">Token</span><input class="row-input" name="token" type="password" placeholder="Token" autocomplete="off" required></label>
-    <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password" required></label>
-    <button class="row action">Connect GitHub Backup</button>
+  {% else %}
+  <form method="post" action="/settings/storage" class="storage-form" data-confirm-actions>
+    {% if sync.mode == "server" and not sync.url %}
+    <p class="section-footer">Connect a GitHub repo to back up off-site, or to make GitHub the primary copy. Create an <strong>empty private repo</strong> (don't tick “Add a README”), then a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> for only that repo with Contents: Read and write.</p>
+    <div class="group" style="margin-top:10px">
+      <label class="row"><span class="sr-only">GitHub repo</span><input class="row-input" name="repo" placeholder="owner/my-garage" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="row"><span class="sr-only">Token</span><input class="row-input" name="token" type="password" placeholder="Token" autocomplete="off"></label>
+    </div>
+    {% elif sync.remote %}
+    <div class="group" style="margin-top:10px">
+      <label class="row"><span class="sr-only">New token</span><input class="row-input" name="token" type="password" placeholder="New Token (only to replace it)" autocomplete="off"></label>
+    </div>
+    {% endif %}
+    <div class="group" style="margin-top:10px">
+      <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password"></label>
+      {% if sync.mode == "server" and not sync.url %}
+      <button class="row action" name="action" value="connect">Connect GitHub Backup</button>
+      <button class="row action" name="action" value="primary_github" data-confirm="Send everything to GitHub and make it the primary copy? This server will then keep a copy of GitHub.">Make GitHub the Primary Copy</button>
+      {% elif sync.mode == "server" %}
+      <button class="row action" name="action" value="primary_github" data-confirm="Make GitHub the primary copy? Everything here is sent first; this server then keeps a copy of GitHub.">Make GitHub the Primary Copy</button>
+      <button class="row action" name="action" value="token">Replace Token</button>
+      {% elif sync.mode == "github" %}
+      <button class="row action" name="action" value="primary_server" data-confirm="Make this server the primary copy? GitHub's full history is brought here first, and GitHub stays connected as the backup.">Make This Server the Primary Copy</button>
+      <button class="row action" name="action" value="token">Replace Token</button>
+      {% else %}
+      <button class="row action" name="action" value="history">Keep History on This Server</button>
+      {% endif %}
+    </div>
+    <p class="section-footer">
+      {%- if sync.mode == "github" %}Switching makes this server the primary copy with GitHub's full history, and GitHub becomes its backup. Edits made on GitHub keep coming in either way.
+      {%- elif sync.mode == "server" and sync.url %}Switching sends everything to GitHub first, then GitHub becomes the primary copy. Edits made on GitHub are brought in either way. Replace the token when it expires.
+      {%- elif sync.mode == "server" %}Either way your garage stays here too.
+      {%- else %}Turns this folder into a garage with a history of every change, so a GitHub backup can be connected.{% endif %}</p>
   </form>
-  {% elif sync.remote %}
-  <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
-    <input type="hidden" name="action" value="token">
-    <label class="row"><span class="sr-only">New token</span><input class="row-input" name="token" type="password" placeholder="New Token" autocomplete="off" required></label>
-    <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password" required></label>
-    <button class="row action">Replace Token</button>
-  </form>
-  <p class="section-footer">For when the token expires. {% if sync.mode == "server" %}Edits made on GitHub are brought in too.{% endif %}</p>
-  {% if sync.mode == "server" %}
+  {% if sync.mode == "server" and sync.url %}
   <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
     <input type="hidden" name="action" value="disconnect">
     <button class="row action destructive" onclick="return confirm('Stop backing up to GitHub? Nothing is deleted there.')">Disconnect GitHub Backup</button>
