@@ -90,7 +90,8 @@
   <div class="section-header">Maintenance Log</div>
   <div class="group">
     {% for e in t.log %}
-    <div class="row selectable"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>
+    {% if editable %}<a class="row" href="{{ t.url }}/log/{{ loop.index0 }}"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what }}</span></span><span class="chev"></span></a>
+    {% else %}<div class="row selectable"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>{% endif %}
     {% endfor %}
     {% if editable %}<a class="row action" href="{{ t.url }}/log">{{ icon("plus", "lead-ic") }}Log Maintenance</a>{% endif %}
   </div>
@@ -109,11 +110,13 @@
 </div>
 {% endif %}
 
-{% if github_repo %}
 <div class="section">
-  <div class="group"><a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span>{{ icon("edit-2", "tint-ic") }}</a></div>
+  <div class="group">
+    {% if editable %}<a class="row has-icon" href="{{ t.url }}/files"><span class="tile" style="--tile: var(--blue)">{{ icon("image") }}</span><span class="row-body">Manage Photos &amp; Files</span><span class="chev"></span></a>{% endif %}
+    {% if sync.versioned %}<a class="row has-icon" href="{{ t.url }}/history"><span class="tile" style="--tile: var(--gray)">{{ icon("clock") }}</span><span class="row-body">History</span><span class="chev"></span></a>{% endif %}
+    {% if github_repo %}<a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/tools/{{ t.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span>{{ icon("edit-2", "tint-ic") }}</a>{% endif %}
+  </div>
 </div>
-{% endif %}
 
 <dialog class="lightbox" data-lightbox aria-label="Photo"><form method="dialog"><button class="close" aria-label="Close">{{ icon("x") }}</button></form><img alt=""></dialog>
 {% endblock %}

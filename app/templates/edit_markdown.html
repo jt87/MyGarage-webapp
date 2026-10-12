@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="hero"><h1 data-title>README.md</h1><p class="t-subhead secondary">tools/{{ t.slug }}</p></div>
+<div class="hero"><h1 data-title>{{ label }}</h1><p class="t-subhead secondary">{{ rel }}</p></div>
 {% include "_form_status.html" %}
-<form method="post" action="{{ t.url }}/markdown" data-edit data-label="Edit README · {{ t.model_name }}" data-done="{{ t.url }}">
+<form method="post" action="{{ action }}" data-edit data-label="Edit {{ rel.rsplit('/', 1)[-1] }} · {{ label }}" data-done="{{ done }}">
   <input type="hidden" name="base" value="{{ base }}">
   <div class="section">
-    <div class="group"><label class="row stacked"><span class="sr-only">README.md</span><textarea class="row-textarea code" name="text" rows="24" spellcheck="false" autocapitalize="off" autocorrect="off" required>{{ text }}</textarea></label></div>
-    <p class="section-footer">The whole file as Markdown. Keep the formats from the sample repo so the app can read it: the title line, the details table, and the tables under <code>## Consumables &amp; parts</code> and <code>## Maintenance log</code>.</p>
+    <div class="group"><label class="row stacked"><span class="sr-only">{{ rel }}</span><textarea class="row-textarea code" name="text" rows="24" spellcheck="false" autocapitalize="off" autocorrect="off" required>{{ text }}</textarea></label></div>
+    <p class="section-footer">The whole file as Markdown.{% if rel.startswith("tools/") %} Keep the formats from the sample repo so the app can read it: the title line, the details table, and the tables under <code>## Consumables &amp; parts</code> and <code>## Maintenance log</code>.{% elif rel.startswith("projects/") %} Keep the <code>Status:</code>, <code>Started:</code> and <code>Finished:</code> lines under the title.{% endif %}</p>
   </div>
   <div class="section"><div class="group"><button class="row action center" type="submit">Save</button></div></div>
   <div class="section" data-force hidden><div class="group"><button class="row action destructive center" type="submit" name="force" value="1">Replace Their Changes With Mine</button></div></div>
 </form>
+{% if delete %}
+<form method="post" action="{{ action }}" class="section" data-edit data-label="Delete {{ label }}" data-done="/reference" data-confirm-submit="Delete this page? You can undo it from History.">
+  <input type="hidden" name="action" value="delete">
+  <div class="group"><button class="row action destructive center" type="submit">Delete Page</button></div>
+</form>
+{% endif %}
 {% endblock %}

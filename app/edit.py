@@ -383,3 +383,134 @@ def upload_name(original: str, kind: str, existing: set[str], now: datetime) -> 
     while name in existing:
         name, n = f"{base}-{n}{ext}", n + 1
     return name
+
+
+# --------------------------------------------------------------------------- 1.1.5: log entries
+
+def log_rows(text: str) -> list[list[str]]:
+    """Maintenance rows in file order, as the tool page lists them."""
+    return [r for r in get_table(text, "maintenance") if len(r) >= 2 and r[0].strip()]
+
+
+def change_log_entry(text: str, old: tuple[str, str], new: tuple[str, str] | None) -> str:
+    """Replace (or with new=None, remove) the log row that reads `old`."""
+    lines = text.splitlines()
+    sec = _section_span(lines, "maintenance")
+    span = sec and _table_span(lines, sec[0] + 1, sec[1])
+    if span:
+        for i in range(span[0] + 2, span[1]):
+            cells = repo.split_row(lines[i])
+            if len(cells) >= 2 and (cells[0].strip(), cells[1].strip()) == (old[0].strip(), old[1].strip()):
+                del lines[i]
+                text = _join(lines)
+                return add_log_entry(text, *new) if new else text
+    raise Conflict("That log entry")
+
+
+# --------------------------------------------------------------------------- 1.1.5: inventory & projects
+
+def remove_inventory_row(text: str, slug: str) -> str:
+    lines, span = _inventory_lines(text)
+    if not span:
+        return text
+    cols = _cols(repo.split_row(lines[span[0]]))
+    total = None
+    for i in range(span[1] - 1, span[0] + 1, -1):
+        cells = repo.split_row(lines[i])
+        get = lambda k: cells[cols[k]] if cols[k] is not None and cols[k] < len(cells) else ""
+        if re.search(rf"tools/{re.escape(slug)}(?:[/)\]]|$)", get("folder")):
+            del lines[i]
+            span = (span[0], span[1] - 1)
+    for i in range(span[0] + 2, span[1]):
+        cells = repo.split_row(lines[i])
+        if cols["tool"] is not None and "total" in repo.plain(cells[cols["tool"]] if cols["tool"] < len(cells) else "").lower():
+            total = i
+    if total is not None and cols["value"] is not None:
+        lines[total] = _refresh_total(lines, span, total, cols["value"])
+    return _join(lines)
+
+
+PROJECT_FIELDS = ("Status", "Started", "Finished")
+
+
+def get_project_field(text: str, name: str) -> str:
+    m = re.search(rf"^{name}:[ \t]*(.*)$", text, re.M | re.I)
+    return m.group(1).strip() if m else ""
+
+
+def set_project_field(text: str, name: str, value: str) -> str:
+    value = cell(value).replace("\\|", "|")
+    if re.search(rf"^{name}:.*$", text, re.M | re.I):
+        return re.sub(rf"^{name}:.*$", lambda _: f"{name}: {value}".rstrip(), text, count=1,
+                      flags=re.M | re.I)
+    lines = text.splitlines()
+    # After the title and any other header fields.
+    at = next((i + 1 for i, l in enumerate(lines) if re.match(r"#\s", l)), 0)
+    while at < len(lines) and (not lines[at].strip() or re.match(r"\w+:", lines[at])):
+        if not lines[at].strip() and at + 1 < len(lines) and not re.match(r"\w+:", lines[at + 1]):
+            break
+        at += 1
+    lines.insert(at, f"{name}: {value}".rstrip())
+    return _join(lines)
+
+
+def project_tools(text: str) -> list[str]:
+    return sorted(set(re.findall(r"tools/([a-z0-9][a-z0-9._-]*)", text)))
+
+
+def set_project_tools(text: str, tools: list[tuple[str, str]]) -> str:
+    """Rewrite `## Tools used` as a list of links: tools = [(slug, name)]."""
+    body = "\n".join(f"- [{name}](../../tools/{slug}/)" for slug, name in tools)
+    lines = text.splitlines()
+    sec = _section_span(lines, "tools used")
+    if sec:
+        lines[sec[0] + 1: sec[1]] = [""] + (body.splitlines() if body else []) + [""]
+        return _join(lines)
+    return _append_section(lines, "Tools used", body) if body else text
+
+
+def new_project_readme(title: str, status: str, started: str, goal: str,
+                       tools: list[tuple[str, str]]) -> str:
+    text = f"# {cell(title)}\n\nStatus: {cell(status) or 'planning'}\nStarted: {cell(started)}\nFinished:\n"
+    text = _append_section(text.splitlines(), "Goal", goal.strip() or "What this project is for.")
+    return set_project_tools(text, tools) if tools else text
+
+
+def rewrite_links(text: str, old: str, new: str | None) -> str:
+    """Point README links at a renamed file (links to a deleted one are left as they are)."""
+    if new is None:
+        return text
+    return re.sub(rf"\]\((\./)?{re.escape(old)}([)#\s])", lambda m: f"]({m.group(1) or ''}{new}{m.group(2)}", text)
+
+
+# --------------------------------------------------------------------------- 1.1.5: photos
+
+MAX_PHOTO_EDGE = 2560
+
+
+def shrink_photo(src, name: str) -> tuple[bytes, str] | None:
+    """A photo resized to MAX_PHOTO_EDGE as JPEG, or None to keep the original.
+
+    iPhone photos are 3-5 MB; at this size they're ~1 MB and still sharp on
+    an iPad. Small JPEGs are kept as they are.
+    """
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+    try:
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
+    try:
+        with Image.open(src) as im:
+            if max(im.size) <= MAX_PHOTO_EDGE and (im.format or "").upper() == "JPEG":
+                return None
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((MAX_PHOTO_EDGE, MAX_PHOTO_EDGE))
+            buf = BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=85, optimize=True)
+    except Exception:
+        return None
+    stem = name.rsplit(".", 1)[0]
+    return buf.getvalue(), f"{stem}.jpg"

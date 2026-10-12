@@ -331,7 +331,7 @@ def editor_name(request: Request) -> str:
 
 
 async def save_edit(request: Request, form, mutate, message: str, back: str,
-                    ok_url, ok_msg: str) -> Response:
+                    ok_url, ok_msg: str, writer=None) -> Response:
     """Run `mutate` against the latest copy of the repo and publish it.
 
     `ok_url` may be a callable, for edits (a new tool) whose page isn't
@@ -344,7 +344,7 @@ async def save_edit(request: Request, form, mutate, message: str, back: str,
     if edit_id in edit_ids:
         return edit_done(request, url, ok_msg)
     try:
-        await anyio.to_thread.run_sync(sync.write, mutate, message, editor_name(request))
+        await anyio.to_thread.run_sync(writer or sync.write, mutate, message, editor_name(request))
     except edit.Conflict as e:
         return edit_failed(request, back, f"{e} was changed on another device while you were "
                            "editing, so nothing was saved. Reload to see the latest, then try "
@@ -526,32 +526,8 @@ def text_hash(text: str) -> str:
 
 
 async def tool_markdown(request: Request):
-    """Edit a tool's README.md as text, for anything the form doesn't cover."""
-    t = tool_or_404(request)
-    p = REPO_PATH / "tools" / t.slug / "README.md"
-    back = f"{t.url}/markdown"
-    if request.method == "GET":
-        text = read_text(p)
-        return render(request, "edit_markdown.html", t=t, text=text, base=text_hash(text),
-                      back=(f"{t.url}/edit", "Edit Tool"), title="README.md")
-    form = await request.form()
-    new = str(form.get("text", "")).replace("\r\n", "\n").rstrip() + "\n"
-    base, force = str(form.get("base", "")), form.get("force") == "1"
-    if not new.strip():
-        return edit_failed(request, back, "The README can't be empty.", 400)
-
-    def mutate(root: Path) -> list[str]:
-        rp = tool_readme(root, t.slug)
-        cur = read_text(rp)
-        if text_hash(cur) != base and cur != new and not force:
-            raise edit.Conflict("This README")
-        if cur == new:
-            return []
-        write_text(rp, new)
-        return [f"tools/{t.slug}/README.md"]
-
-    return await save_edit(request, form, mutate, f"Edit {t.model_name} README", back, t.url,
-                           "Changes saved")
+    """1.1 URL for the README editor, now shared by every page."""
+    return RedirectResponse(f"/edit/tools/{request.path_params['slug']}", status_code=301)
 
 
 UPLOAD_KINDS = {"photo": "Photo", "receipt": "Receipt", "manual": "Manual", "document": "Document"}
@@ -563,15 +539,22 @@ async def tool_add(request: Request):
     back = f"{t.url}/add"
     if request.method == "GET":
         kind = request.query_params.get("kind", "photo")
-        return render(request, "edit_add.html", t=t, kinds=UPLOAD_KINDS,
+        return render(request, "edit_add.html", t=t, kinds=UPLOAD_KINDS, action=back,
                       kind=kind if kind in UPLOAD_KINDS else "photo",
                       back=(t.url, t.model_name), title="Add Files")
+    return await add_files(request, f"tools/{t.slug}", t.model_name, back, t.url)
+
+
+async def add_files(request: Request, rel: str, name: str, back: str, done: str,
+                    project: bool = False) -> Response:
+    """Save uploaded files into a tool or project folder (one commit)."""
     if int(request.headers.get("content-length") or 0) > (MAX_UPLOAD_MB * 4 + 1) * 1024 * 1024:
         return edit_failed(request, back, f"Add fewer files at once (up to {MAX_UPLOAD_MB * 4} MB).", 413)
     async with request.form(max_files=20) as form:
-        kind = str(form.get("kind", "photo"))
+        kind = "document" if project else str(form.get("kind", "photo"))
         if kind not in UPLOAD_KINDS:
             kind = "photo"
+        full_size = form.get("full_size") == "on"
         uploads = [f for f in form.getlist("file") if hasattr(f, "filename") and f.filename]
         if not uploads:
             return edit_failed(request, back, "Choose a file to add.", 400)
@@ -582,25 +565,37 @@ async def tool_add(request: Request):
         now = datetime.now()
 
         def mutate(root: Path) -> list[str]:
-            folder = tool_readme(root, t.slug).parent
+            folder = root / rel
+            if not folder.is_dir():
+                raise edit.Invalid("This isn't in the repo any more.")
             existing = {p.name for p in folder.iterdir()}
             changed = []
             for f in uploads:
-                name = edit.upload_name(f.filename, kind, existing, now)
-                existing.add(name)
                 f.file.seek(0)
-                tmp = folder / f".{name}.tmp"
+                filename = f.filename
+                small = None
+                if kind == "photo" and not full_size:
+                    small = edit.shrink_photo(f.file, filename)
+                    f.file.seek(0)
+                    if small:
+                        filename = small[1]
+                out_name = edit.upload_name(filename, kind, existing, now)
+                existing.add(out_name)
+                tmp = folder / f".{out_name}.tmp"
                 with open(tmp, "wb") as out:
-                    shutil.copyfileobj(f.file, out)
-                tmp.replace(folder / name)
-                changed.append(f"tools/{t.slug}/{name}")
+                    if small:
+                        out.write(small[0])
+                    else:
+                        shutil.copyfileobj(f.file, out)
+                tmp.replace(folder / out_name)
+                changed.append(f"{rel}/{out_name}")
             return changed
 
         n = len(uploads)
-        label = UPLOAD_KINDS[kind].lower() + ("s" if n > 1 else "")
+        label = ("file" if project else UPLOAD_KINDS[kind].lower()) + ("s" if n > 1 else "")
         return await save_edit(request, form, mutate,
-                               f"Add {n if n > 1 else 'a'} {label} to {t.model_name}", back,
-                               t.url, f"Added {n} {label}" if n > 1 else f"{UPLOAD_KINDS[kind]} added")
+                               f"Add {n if n > 1 else 'a'} {label} to {name}", back,
+                               done, f"Added {n} {label}" if n > 1 else f"{label.capitalize()} added")
 
 
 async def tool_new(request: Request):
@@ -662,18 +657,23 @@ async def offline_manifest(request: Request):
     for t in inv.tools:
         pages.append(t.url)
         if not READ_ONLY:
-            pages += [f"{t.url}/edit", f"{t.url}/log", f"{t.url}/add"]
+            pages += [f"{t.url}/edit", f"{t.url}/log", f"{t.url}/add", f"{t.url}/files",
+                      f"/edit/tools/{t.slug}"]
+            pages += [f"{t.url}/log/{i}" for i in range(len(t.log))]
         if t.cover:
             thumbs += [t.cover.thumb + "&w=320", t.cover.thumb + "&w=640"]
         thumbs += [p.thumb + "&w=1280" for p in t.photos]
         add_files(t.photos + t.manuals + t.documents + t.proofs + t.other_files)
     for p in inv.projects:
         pages.append(p.url)
+        if not READ_ONLY:
+            pages += [f"{p.url}/edit", f"{p.url}/add", f"{p.url}/files", f"/edit/projects/{p.slug}"]
         thumbs += [f.thumb + "&w=640" for f in p.files if f.kind == "image"]
         add_files(p.files)
     pages += [r.url for r in inv.references]
     if not READ_ONLY:
-        pages.append("/tools/new")
+        pages += ["/tools/new", "/projects/new", "/reference/new"]
+        pages += [f"/edit/reference/{r.slug}" for r in inv.references]
     version = sync.fingerprint()
     return JSONResponse({"version": f"{version}:{STATIC_VERSION}",
                          "pages": list(dict.fromkeys(pages)),
@@ -1248,15 +1248,19 @@ async def not_found(request: Request, exc: HTTPException):
     return PlainTextResponse(str(exc.detail), status_code=exc.status_code)
 
 
+from . import manage  # noqa: E402  (uses the helpers above)
+
 routes = [
     Route("/", home),
+    *manage.routes_before,
     Route("/tools", tools),
     Route("/tools/new", tool_new, methods=["GET", "POST"]),
     Route("/tools/{slug}", tool),
     Route("/tools/{slug}/log", tool_log, methods=["GET", "POST"]),
     Route("/tools/{slug}/edit", tool_edit, methods=["GET", "POST"]),
-    Route("/tools/{slug}/markdown", tool_markdown, methods=["GET", "POST"]),
+    Route("/tools/{slug}/markdown", tool_markdown),
     Route("/tools/{slug}/add", tool_add, methods=["GET", "POST"]),
+    *manage.routes,
     Route("/offline", offline_page),
     Route("/offline/manifest.json", offline_manifest),
     Route("/sw.js", service_worker),

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><h1 data-title>New Page</h1></div>
+{% include "_form_status.html" %}
+<form method="post" action="/reference/new" data-edit data-label="New reference page" data-done="/reference">
+  <div class="section">
+    <div class="group">
+      <label class="row field"><span class="field-label">Title</span><input class="row-input" name="title" placeholder="Finishing schedule" required autofocus></label>
+      <label class="row stacked"><span class="sr-only">Text</span><textarea class="row-textarea code" name="text" rows="14" placeholder="Markdown: ## headings, - lists, | tables |" spellcheck="true"></textarea></label>
+    </div>
+  </div>
+  <div class="section"><div class="group"><button class="row action center" type="submit">Add Page</button></div></div>
+</form>
+{% endblock %}

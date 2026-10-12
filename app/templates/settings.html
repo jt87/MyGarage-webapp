@@ -122,6 +122,10 @@
   {% endif %}
 </div>
 
+{% if sync.versioned %}
+<div class="section"><div class="group"><a class="row has-icon" href="/history"><span class="tile" style="--tile: var(--gray)">{{ icon("clock") }}</span><span class="row-body">History</span><span class="row-detail">Every change, with Undo</span><span class="chev"></span></a></div></div>
+{% endif %}
+
 <div class="section" data-offline-settings>
   <div class="section-header">This Device</div>
   <div class="group">
@@ -129,6 +133,7 @@
     <button class="row action has-icon" type="button" data-save-all>{{ tile("book-open", "red") }}<span class="row-body">Save All Manuals &amp; Files</span><span class="row-detail" data-save-all-size></span></button>
     <button class="row action destructive has-icon" type="button" data-clear-offline>{{ tile("x", "gray") }}<span class="row-body">Remove Saved Files</span></button>
   </div>
+  <p class="section-footer banner err" data-needs-https hidden>Offline use needs HTTPS. Open {{ site_title }} through your domain or a Tailscale HTTPS name (not <code>http://</code> and an IP address) and it will start saving pages. Everything else, including editing, works either way.</p>
   <p class="section-footer">Every page and photo is kept on this device so {{ site_title }} works without a connection. Manuals, receipts and 3D files are kept once you open them, or all at once with Save All. Logging out removes everything saved on this device.</p>
 </div>
 

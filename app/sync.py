@@ -303,7 +303,7 @@ class RepoSync:
 
     # ------------------------------------------------------------------ writes
 
-    def write(self, mutate, message: str, author: str = "MyGarage") -> bool:
+    def write(self, mutate, message: str, author: str = "MyGarage", depth: int = 1) -> bool:
         """Apply `mutate(root) -> [changed paths]` to the latest copy and publish it.
 
         In git mode this fetches the branch tip, applies the change, commits
@@ -320,7 +320,7 @@ class RepoSync:
                 return self._write_local(mutate, message, author)
             for attempt in range(3):
                 try:
-                    self._git("fetch", "--depth", "1", self.url, self.branch, cwd=self.path)
+                    self._git("fetch", "--depth", str(depth), self.url, self.branch, cwd=self.path)
                     self._count("fetch")
                     self._git("reset", "--hard", "FETCH_HEAD", cwd=self.path)
                     self._git("clean", "-fdq", cwd=self.path)
@@ -574,6 +574,52 @@ class RepoSync:
                                  "address, and that the token can access the repo.") from e
             raise WriteError(friendly_git_error(getattr(e, "detail", str(e))),
                              retry=True) from e
+
+    # ------------------------------------------------------------------ history
+
+    HISTORY_DEPTH = 100
+
+    def git(self, *args: str) -> str:
+        """Run git in the repo (for `mutate` callbacks, which already hold the lock)."""
+        return self._git(*args, cwd=self.path)
+
+    def git_bytes(self, *args: str) -> bytes | None:
+        """Raw output (file contents) of a git command in the repo, or None."""
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "1",
+               "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*"}
+        res = subprocess.run(["git", *args], cwd=self.path, env=env, capture_output=True,
+                             timeout=120)
+        return res.stdout if res.returncode == 0 else None
+
+    def history(self, paths: list[str], limit: int = 40) -> list[dict]:
+        """Recent commits touching `paths` (all files if empty), newest first.
+
+        With GitHub as the primary copy the server normally keeps only the
+        latest commit, so this fetches more history first (one request).
+        """
+        if not self.versioned or not (self.path / ".git").exists():
+            return []
+        with self._lock:
+            if self.git_mode and (self.path / ".git" / "shallow").exists():
+                try:
+                    self._git("fetch", "-q", "--depth", str(self.HISTORY_DEPTH), self.url,
+                              self.branch, cwd=self.path)
+                    self._count("fetch")
+                    self._git("reset", "-q", "--hard", "FETCH_HEAD", cwd=self.path)
+                    self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+                except RuntimeError as e:
+                    log.warning("could not fetch history: %s", e)
+            out = self._git("log", f"-n{limit}", "--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s",
+                            "--", *paths, cwd=self.path)
+        entries = []
+        for line in out.splitlines():
+            sha, parents, author, when, subject = (line.split("\x1f") + [""] * 5)[:5]
+            entries.append({"sha": sha, "author": author, "subject": subject,
+                            "when": datetime.fromisoformat(when) if when else None,
+                            # Undoing needs the version before it, which a merge or
+                            # the first commit doesn't have in a usable form.
+                            "can_undo": len(parents.split()) == 1})
+        return entries
 
     def _reset_quietly(self, to: str = "FETCH_HEAD") -> None:
         for args in (("reset", "--hard", to), ("clean", "-fdq")):

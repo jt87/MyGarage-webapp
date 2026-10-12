@@ -424,6 +424,8 @@
     };
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
+      const ask = (ev.submitter && ev.submitter.dataset.confirm) || form.dataset.confirmSubmit;
+      if (ask && !confirm(ask)) return;
       const btns = $$("button[type=submit], button:not([type])", form);
       if (btns.some((b) => b.disabled)) return;
       const item = formItem(form, ev.submitter);
@@ -476,6 +478,7 @@
     const sync = () => {
       const kind = ($("input[name=kind]:checked") || {}).value || "photo";
       $$("[data-for]", help).forEach((s) => { s.hidden = s.dataset.for !== kind; });
+      $$("[data-for-kind]").forEach((r) => { r.hidden = r.dataset.forKind !== kind; });
     };
     $$("input[name=kind]").forEach((r) => r.addEventListener("change", sync));
     sync();
@@ -503,7 +506,9 @@
   if (usage) {
     const fmt = (b) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.round(b / 1e3)} KB`);
     const refreshUsage = async () => {
-      if (!sw) { usage.textContent = "Needs HTTPS"; $$("[data-save-all], [data-clear-offline]").forEach((b) => { b.disabled = true; }); return; }
+      if (!sw) {
+        const note = $("[data-needs-https]");
+        if (note && !isSecureContext) note.hidden = false; usage.textContent = "Needs HTTPS"; $$("[data-save-all], [data-clear-offline]").forEach((b) => { b.disabled = true; }); return; }
       if (navigator.storage && navigator.storage.estimate) {
         try { usage.textContent = fmt((await navigator.storage.estimate()).usage || 0); } catch {}
       }

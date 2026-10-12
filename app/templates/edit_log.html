@@ -1,15 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="hero"><h1 data-title>Log Maintenance</h1><p class="t-subhead secondary">{{ t.model_name }}{% if t.subtitle %} · {{ t.subtitle }}{% endif %}</p></div>
+<div class="hero"><h1 data-title>{{ "Edit Entry" if entry else "Log Maintenance" }}</h1><p class="t-subhead secondary">{{ t.model_name }}{% if t.subtitle %} · {{ t.subtitle }}{% endif %}</p></div>
 {% include "_form_status.html" %}
-<form method="post" action="{{ t.url }}/log" data-edit data-label="Log maintenance · {{ t.model_name }}" data-done="{{ t.url }}#log">
+<form method="post" action="{{ request.url.path }}" data-edit data-label="{{ 'Edit log entry' if entry else 'Log maintenance' }} · {{ t.model_name }}" data-done="{{ t.url }}#log">
+  {% if entry %}<input type="hidden" name="old_date" value="{{ entry[0] }}"><input type="hidden" name="old_what" value="{{ entry[1] }}">{% endif %}
   <div class="section">
     <div class="group">
-      <label class="row field"><span class="field-label">Date</span><input class="row-input" type="date" name="date" value="{{ today }}" data-today required></label>
-      <label class="row field stacked"><span class="field-label">What was done</span><textarea class="row-textarea" name="what" rows="4" placeholder="Changed the blade, waxed the top…" required autofocus></textarea></label>
+      <label class="row field"><span class="field-label">Date</span><input class="row-input" type="date" name="date" value="{{ today }}" {% if not entry %}data-today{% endif %} required></label>
+      <label class="row field stacked"><span class="field-label">What was done</span><textarea class="row-textarea" name="what" rows="4" placeholder="Changed the blade, waxed the top…" required {% if not entry %}autofocus{% endif %}>{{ entry[1] if entry else "" }}</textarea></label>
     </div>
-    <p class="section-footer">Added to the Maintenance log in this tool's README.</p>
+    <p class="section-footer">{{ "Changes this row" if entry else "Added to the Maintenance log" }} in this tool's README.</p>
   </div>
   <div class="section"><div class="group"><button class="row action center" type="submit">Save</button></div></div>
+  {% if entry %}
+  <div class="section"><div class="group"><button class="row action destructive center" type="submit" name="action" value="delete" formnovalidate data-confirm="Delete this log entry? You can undo it from History.">Delete Entry</button></div></div>
+  {% endif %}
 </form>
 {% endblock %}

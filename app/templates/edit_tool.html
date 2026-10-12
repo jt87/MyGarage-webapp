@@ -57,10 +57,13 @@
 </form>
 <div class="section">
   <div class="group">
-    <a class="row" href="{{ t.url }}/markdown"><span class="row-body">Edit README.md</span><span class="chev"></span></a>
+    <a class="row" href="/edit/tools/{{ t.slug }}"><span class="row-body">Edit README.md</span><span class="chev"></span></a>
+    <a class="row" href="{{ t.url }}/files"><span class="row-body">Manage Photos &amp; Files</span><span class="chev"></span></a>
+    <a class="row" href="{{ t.url }}/history"><span class="row-body">History</span><span class="chev"></span></a>
   </div>
-  <p class="section-footer">For notes, settings and anything else on the page.</p>
+  <p class="section-footer">The README holds notes, settings and anything else on the page.</p>
 </div>
+{% set item = t %}{% set kind_label = "tool" %}{% include "_delete.html" %}
 <template data-row-template="spec">{{ spec_row() }}</template>
 <template data-row-template="part">{{ part_row() }}</template>
 {% endblock %}

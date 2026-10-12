@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% set FILE_COLORS = {"pdf": "red", "image": "blue", "model": "purple", "other": "gray"} %}
+{% block content %}
+<div class="hero"><h1 data-title>Files</h1><p class="t-subhead secondary">{{ item.model_name if is_tool else item.title }}</p></div>
+{% include "_form_status.html" %}
+{% if files %}
+<div class="section">
+  <div class="group">
+    {% for f, k in files %}
+    <details class="file-manage">
+      <summary class="row has-icon">
+        {% if f.kind == "image" %}<img class="thumb small" src="{{ f.thumb }}&w=320" alt="" loading="lazy">
+        {% else %}<span class="file-tile" style="--tile: var(--{{ FILE_COLORS[f.kind] }})"><span>{{ f.ext|upper }}</span></span>{% endif %}
+        <span class="row-body"><span class="row-title clip">{{ f.name }}</span><span class="row-sub">{% if is_tool %}{{ kinds[k] }}{% if f.name == cover %} · Cover{% endif %} · {% endif %}{{ f.human_size }}</span></span>
+        <span class="chev"></span>
+      </summary>
+      <form method="post" action="{{ item.url }}/files" data-edit data-label="Rename {{ f.name }}" data-done="{{ item.url }}/files" class="file-actions">
+        <input type="hidden" name="name" value="{{ f.name }}">
+        <input type="hidden" name="old_kind" value="{{ k }}">
+        <label class="row field"><span class="field-label">Name</span><input class="row-input" name="new_name" value="{{ f.name.rsplit('.', 1)[0] }}" autocapitalize="off" autocorrect="off" spellcheck="false"><span class="secondary">.{{ f.ext }}</span></label>
+        {% if is_tool %}<label class="row field"><span class="field-label">Type</span><select name="kind">{% for key, label in kinds.items() %}{% if key != "photo" or f.kind == "image" %}<option value="{{ key }}" {% if key == k %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select></label>{% endif %}
+        <div class="row file-buttons">
+          <button class="row-btn" type="submit" name="action" value="rename">Save</button>
+          {% if is_tool and k == "photo" and f.name != cover %}<button class="row-btn" type="submit" name="action" value="cover">Make Cover</button>{% endif %}
+          <a class="row-btn" href="{{ '/view/' ~ (f.path|q) }}">Open</a>
+          <button class="row-btn destructive" type="submit" name="action" value="delete" data-confirm="Delete {{ f.name }}? You can undo it from History.">Delete</button>
+        </div>
+      </form>
+    </details>
+    {% endfor %}
+  </div>
+  <p class="section-footer">{% if is_tool %}The type decides where a file shows up: photos in the gallery, receipts under Purchase &amp; Insurance, manuals and documents under Manuals &amp; Documents. Links to a renamed file in the README are updated.{% else %}Links to a renamed file in the README are updated.{% endif %}</p>
+</div>
+{% else %}
+<div class="section"><div class="group"><div class="row secondary">No files yet.</div></div></div>
+{% endif %}
+<div class="section"><div class="group"><a class="row action" href="{{ item.url }}/add">{{ icon("plus", "lead-ic") }}Add Files</a></div></div>
+{% endblock %}

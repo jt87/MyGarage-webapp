@@ -1,27 +1,28 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon %}
 {% block content %}
-<div class="hero"><h1 data-title>Add Files</h1><p class="t-subhead secondary">{{ t.model_name }}{% if t.subtitle %} · {{ t.subtitle }}{% endif %}</p></div>
+<div class="hero"><h1 data-title>Add Files</h1><p class="t-subhead secondary">{{ t.model_name or t.title }}{% if t.subtitle %} · {{ t.subtitle }}{% endif %}</p></div>
 {% include "_form_status.html" %}
-<form method="post" action="{{ t.url }}/add" enctype="multipart/form-data" data-edit data-label="Add files · {{ t.model_name }}" data-done="{{ t.url }}">
-  <div class="section">
+<form method="post" action="{{ action }}" enctype="multipart/form-data" data-edit data-label="Add files · {{ t.model_name or t.title }}" data-done="{{ t.url }}">
+  {% if kinds|length > 1 %}<div class="section">
     <div class="segmented" role="radiogroup" aria-label="Type">
       {% for k, label in kinds.items() %}
       <label><input type="radio" name="kind" value="{{ k }}" {% if k == kind %}checked{% endif %}><span>{{ label }}</span></label>
       {% endfor %}
     </div>
-  </div>
+  </div>{% endif %}
   <div class="section">
     <div class="group">
       <label class="row action has-icon file-pick"><span class="tile" style="--tile: var(--blue)">{{ icon("image") }}</span><span class="row-body"><span data-file-label>Choose Photos or Files</span></span>
-        <input type="file" name="file" multiple accept="image/*,.heic,.heif,application/pdf,.stl" required data-file-input></label>
+        <input type="file" name="file" multiple accept="{{ 'image/*,.heic,.heif,application/pdf,.stl' if kinds|length > 1 else '' }}" required data-file-input></label>
+      {% if kinds|length > 1 %}<label class="row" data-for-kind="photo"><span class="row-body">Full Resolution</span><input class="switch" type="checkbox" name="full_size"></label>{% endif %}
     </div>
     <p class="section-footer" data-kind-help>
-      <span data-for="photo">Photos go in the gallery. The first photo of a tool becomes its cover.</span>
+      <span data-for="photo">Photos go in the gallery. The first photo of a tool becomes its cover. They're saved at 2560 pixels, about 1 MB each, unless you turn on Full Resolution.</span>
       <span data-for="receipt" hidden>Saved as proof of purchase for insurance, kept out of the gallery.</span>
       <span data-for="manual" hidden>A PDF, listed under Manuals.</span>
       <span data-for="document" hidden>Warranty cards, spec sheets and other files.</span>
-      Up to {{ max_upload_mb }} MB each.
+      {% if kinds|length == 1 %}Plans, photos, STL files and anything else for this project. {% endif %}Up to {{ max_upload_mb }} MB each.
     </p>
   </div>
   <div class="section"><div class="group"><button class="row action center" type="submit">Add</button></div></div>

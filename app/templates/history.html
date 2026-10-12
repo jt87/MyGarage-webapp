@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% block content %}
+<div class="hero"><h1 data-title>History</h1>{% if name %}<p class="t-subhead secondary">{{ name }}</p>{% endif %}</div>
+{% include "_form_status.html" %}
+{% if not versioned %}
+<div class="section"><div class="group"><div class="row secondary">This garage is a plain folder, so changes aren't recorded. Settings → Storage → Keep History on This Server turns history on.</div></div></div>
+{% elif not entries %}
+<div class="section"><div class="group"><div class="row secondary">No changes yet.</div></div></div>
+{% else %}
+<div class="section">
+  <div class="group">
+    {% for e in entries %}
+    <div class="row history-row">
+      <span class="row-body"><span class="row-title">{{ e.subject }}</span><span class="row-sub">{{ e.author }} · {{ e.when|ago }} · <code>{{ e.sha[:7] }}</code></span></span>
+      {% if e.can_undo %}
+      <form method="post" action="/undo" data-edit data-label="Undo · {{ e.subject[:60] }}" data-done="{{ here }}">
+        <input type="hidden" name="sha" value="{{ e.sha }}"><input type="hidden" name="subject" value="{{ e.subject }}"><input type="hidden" name="back" value="{{ here }}">
+        <button class="row-btn" type="submit" data-confirm="Undo “{{ e.subject }}”? This adds a change that reverses it; nothing is erased.">Undo</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="section-footer">Undo adds a new change that reverses the old one, so it can itself be undone. {% if sync.git_mode %}Shows the last {{ sync.HISTORY_DEPTH }} changes on GitHub.{% endif %}</p>
+</div>
+{% endif %}
+{% endblock %}

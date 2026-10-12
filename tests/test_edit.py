@@ -90,7 +90,7 @@ def readme(slug):
 
 def test_log_route_saves_and_is_idempotent():
     for page in ("/tools/acme-dd20/log", "/tools/acme-dd20/edit", "/tools/acme-dd20/add",
-                 "/tools/acme-dd20/markdown", "/tools/new"):
+                 "/edit/tools/acme-dd20", "/tools/new"):
         assert client.get(page).status_code == 200, page
     form = {"date": "2027-02-02", "what": "Greased the chuck", "edit_id": "log-1"}
     r = client.post("/tools/acme-dd20/log", data=form, headers=JSON)
@@ -147,14 +147,14 @@ def test_edit_details_merges_and_conflicts():
 
 
 def test_markdown_edit_detects_conflict_and_can_force():
-    html = client.get("/tools/acme-dd20/markdown").text
+    html = client.get("/edit/tools/acme-dd20").text
     base = re.search(r'name="base" value="([^"]*)"', html).group(1)
     current = readme("acme-dd20")
-    r = client.post("/tools/acme-dd20/markdown", data={"text": current + "\nMine.\n", "base": base}, headers=JSON)
+    r = client.post("/edit/tools/acme-dd20", data={"text": current + "\nMine.\n", "base": base}, headers=JSON)
     assert r.json()["ok"]
-    r = client.post("/tools/acme-dd20/markdown", data={"text": current + "\nStale.\n", "base": base}, headers=JSON)
+    r = client.post("/edit/tools/acme-dd20", data={"text": current + "\nStale.\n", "base": base}, headers=JSON)
     assert r.status_code == 409
-    r = client.post("/tools/acme-dd20/markdown",
+    r = client.post("/edit/tools/acme-dd20",
                     data={"text": current + "\nStale.\n", "base": base, "force": "1"}, headers=JSON)
     assert r.json()["ok"] and "Stale." in readme("acme-dd20")
 

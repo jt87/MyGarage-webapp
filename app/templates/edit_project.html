@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><h1 data-title>{{ "Edit Project" if p else "New Project" }}</h1>{% if p %}<p class="t-subhead secondary">{{ p.title }}</p>{% endif %}</div>
+{% include "_form_status.html" %}
+<form method="post" action="{{ p.url ~ '/edit' if p else '/projects/new' }}" data-edit data-label="{{ ('Edit · ' ~ p.title) if p else 'New project' }}" data-done="{{ p.url if p else '/projects' }}">
+  {% if p %}<input type="hidden" name="base" value="{{ base }}">{% endif %}
+  <div class="section">
+    <div class="group">
+      <label class="row field"><span class="field-label">Title</span><input class="row-input" name="title" value="{{ s.title or '' }}" required {% if not p %}autofocus{% endif %}></label>
+      <label class="row field"><span class="field-label">Status</span><input class="row-input" name="status" value="{{ s.status or '' }}" list="statuses"></label>
+      <label class="row field"><span class="field-label">Started</span><input class="row-input" name="started" value="{{ s.started or '' }}" placeholder="2026-10"></label>
+      {% if p %}<label class="row field"><span class="field-label">Finished</span><input class="row-input" name="finished" value="{{ s.finished or '' }}" placeholder="2026-12"></label>{% endif %}
+    </div>
+    <datalist id="statuses">{% for st in statuses %}<option value="{{ st }}">{% endfor %}</datalist>
+  </div>
+  {% if not p %}
+  <div class="section">
+    <div class="section-header">Goal</div>
+    <div class="group"><label class="row stacked"><span class="sr-only">Goal</span><textarea class="row-textarea" name="goal" rows="3" placeholder="A simple pine bookshelf, 36&quot; wide."></textarea></label></div>
+  </div>
+  {% endif %}
+  {% if tools %}
+  <div class="section">
+    <div class="section-header">Tools Used</div>
+    <div class="group">
+      {% for t in tools|sort(attribute="model_name") %}
+      <label class="row has-check"><input class="check" type="checkbox" name="tools" value="{{ t.slug }}" {% if t.slug in s.tools %}checked{% endif %}><span class="row-body"><span class="row-title clip">{{ t.model_name }}</span><span class="row-sub clip">{{ t.subtitle }}</span></span></label>
+      {% endfor %}
+    </div>
+    <p class="section-footer">Listed under “Tools used” in the project's README, and the project shows on each tool's page.</p>
+  </div>
+  {% endif %}
+  <div class="section"><div class="group"><button class="row action center" type="submit">{{ "Save" if p else "Add Project" }}</button></div></div>
+</form>
+{% if p %}
+<div class="section">
+  <div class="group">
+    <a class="row" href="/edit/projects/{{ p.slug }}"><span class="row-body">Edit README.md</span><span class="chev"></span></a>
+    <a class="row" href="{{ p.url }}/files"><span class="row-body">Manage Files</span><span class="chev"></span></a>
+    <a class="row" href="{{ p.url }}/history"><span class="row-body">History</span><span class="chev"></span></a>
+  </div>
+  <p class="section-footer">The README holds the goal, notes and steps.</p>
+</div>
+{% set item = p %}{% set kind_label = "project" %}{% include "_delete.html" %}
+{% endif %}
+{% endblock %}

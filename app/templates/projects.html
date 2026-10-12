@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon %}
 {% set large = true %}
+{% block nav_actions %}{% if editable %}<a class="nav-btn" href="/projects/new" aria-label="New Project">{{ icon("plus") }}</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="large-title"><h1>Projects</h1></div>
 <div class="section">
