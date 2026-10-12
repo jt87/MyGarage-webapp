@@ -514,3 +514,54 @@ button.row.action { justify-content: flex-start; }
 .banner.err { background: color-mix(in srgb, var(--red) 14%, var(--cell)); color: var(--label); }
 .login-foot { text-align: left; padding: 0 16px; margin: -4px 0 16px; }
 .login .group + .group { margin-top: 0; }
+
+/* ------------------------------------------------------------------ editing (1.1) */
+.nav-btn.text { font-size: 1rem; letter-spacing: -.024em; }
+.row.action.center, button.row.action.center { justify-content: center; font-weight: 600; }
+.row.action .lead-ic { width: 20px; height: 20px; margin-right: 10px; flex: 0 0 auto; stroke-width: 2.3; }
+.row.field { gap: 12px; }
+.row.field, .row.stacked, .row.part { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.field-label { flex: 0 0 auto; width: 7.6em; color: var(--label); }
+.row.field.stacked, .row.stacked { flex-direction: column; align-items: stretch; gap: 6px; padding-top: 10px; padding-bottom: 10px; }
+.row.field.stacked .field-label { width: auto; font-size: .882rem; color: var(--secondary-label); }
+.row-textarea {
+  border: 0; background: none; color: var(--label); padding: 0; outline: none; resize: vertical; width: 100%;
+  font: inherit; font-size: max(16px, 1rem); letter-spacing: -.024em; line-height: 1.35; min-height: 5.5em;
+}
+.row-textarea.code { font-family: var(--mono); font-size: max(16px, .82rem); letter-spacing: 0; min-height: 60vh; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.row-textarea::placeholder { color: var(--tertiary-label); }
+input.row-input[type=date] { -webkit-appearance: none; appearance: none; text-align: left; min-height: 22px; }
+.row.pair .key { flex: 0 0 38%; color: var(--secondary-label); }
+.row.part { align-items: flex-start; }
+.part-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.part-fields .strong { font-weight: 600; }
+.remove-btn {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; border: 0; padding: 0; margin: 0 -2px 0 2px;
+  background: var(--red); color: #fff; display: grid; place-items: center; cursor: pointer;
+}
+.remove-btn svg { width: 14px; height: 14px; stroke-width: 3.2; }
+.add-group { margin-top: 8px; }
+.segmented { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 9px; background: var(--fill); }
+.segmented label { position: relative; text-align: center; cursor: pointer; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span { display: block; padding: 6px 4px; border-radius: 7px; font-size: .812rem; font-weight: 500; letter-spacing: -.01em; }
+.segmented input:checked + span { background: var(--cell); font-weight: 600; box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 3px 1px rgba(0,0,0,.04); }
+.segmented input:focus-visible + span { outline: 2px solid var(--tint); }
+@media (prefers-color-scheme: dark) { .segmented input:checked + span { background: #636366; } }
+.file-pick { position: relative; }
+.file-pick input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.row-btn { flex: 0 0 auto; border: 0; background: none; color: var(--tint); font-size: .882rem; padding: 6px 0 6px 8px; cursor: pointer; }
+.row-btn.destructive { color: var(--destructive); }
+.outbox .row-sub { white-space: normal; }
+
+/* ------------------------------------------------------------------ offline (1.1) */
+.offline-bar {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 16px; padding: 9px 14px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--orange) 16%, var(--cell)); font-size: .882rem; line-height: 1.3;
+}
+.offline-bar[hidden], .outbox[hidden], [data-form-error][hidden] { display: none; }
+.viewer-offline { text-align: center; margin: -4px 0 10px; }
+.empty { text-align: center; padding: 60px 16px; display: grid; justify-items: center; gap: 10px; }
+.empty > svg { width: 44px; height: 44px; color: var(--tertiary-label); stroke-width: 1.6; }
+.empty p { max-width: 32em; }
+@media print { .offline-bar, .outbox { display: none !important; } }

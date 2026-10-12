@@ -23,6 +23,8 @@
   </a>
 </div>
 
+{% if editable %}<div class="section outbox" data-outbox hidden></div>{% endif %}
+
 <div class="section-header prominent"><span>Tools</span><a href="/tools">See All</a></div>
 <div class="shelf">
   {% for t in inv.tools %}

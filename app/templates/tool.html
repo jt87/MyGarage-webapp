@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon, file_rows, kv, cons_row, tool_row %}
 {% block nav_actions %}
+{% if editable %}<a class="nav-btn text" href="{{ t.url }}/edit">Edit</a>{% endif %}
 <button class="nav-btn" type="button" data-share data-share-title="{{ t.title }}" aria-label="Share">{{ icon("share") }}</button>
 {% endblock %}
 {% block content %}
@@ -28,11 +29,14 @@
   </div>
 </div>
 
+{% if editable %}<div class="section outbox" data-outbox="{{ t.url }}" hidden></div>{% endif %}
+
 <div class="actions-row">
   {% if t.manuals %}<a class="action-btn" href="/view/{{ t.manuals[0].path|q }}">{{ icon("book-open") }}Manual</a>{% endif %}
   {% if t.consumables %}<a class="action-btn" href="#parts">{{ icon("shopping-cart") }}Parts</a>{% endif %}
   <a class="action-btn" href="#purchase">{{ icon("credit-card") }}{{ 'Receipt' if t.proofs else 'Purchase' }}</a>
   {% if t.documents or t.manuals|length > 1 or t.other_files %}<a class="action-btn" href="#documents">{{ icon("file-text") }}Docs</a>{% endif %}
+  {% if editable %}<a class="action-btn" href="{{ t.url }}/add">{{ icon("image") }}Add Photo</a>{% endif %}
 </div>
 
 <div class="section" id="details">
@@ -49,8 +53,9 @@
     {% if t.paid_text %}{{ kv("Paid", t.paid_text|e) }}{% endif %}
     {% if t.replacement_html %}{{ kv("Replacement Value", t.replacement_html) }}{% endif %}
     {{ file_rows(t.proofs) }}
+    {% if editable %}<a class="row action" href="{{ t.url }}/add?kind=receipt">{{ icon("plus", "lead-ic") }}Add Receipt</a>{% endif %}
   </div>
-  {% if not t.proofs %}<p class="section-footer">No proof of purchase on file. Add a scan or photo named <code>receipt.pdf</code> or <code>receipt.jpg</code> to this tool's folder.</p>{% endif %}
+  {% if not t.proofs %}<p class="section-footer">No proof of purchase on file.{% if editable %} Add a scan or a photo of the receipt.{% else %} Add a scan or photo named <code>receipt.pdf</code> or <code>receipt.jpg</code> to this tool's folder.{% endif %}</p>{% endif %}
 </div>
 
 {% if t.consumables %}
@@ -64,10 +69,12 @@
 {% endif %}
 
 {% set docs = t.manuals + t.documents + t.other_files %}
-{% if docs %}
+{% if docs or editable %}
 <div class="section" id="documents">
   <div class="section-header">Manuals &amp; Documents</div>
-  <div class="group">{{ file_rows(docs) }}</div>
+  <div class="group">{{ file_rows(docs) }}
+    {% if editable %}<a class="row action" href="{{ t.url }}/add?kind={{ 'document' if t.manuals else 'manual' }}">{{ icon("plus", "lead-ic") }}Add {{ 'File' if t.manuals else 'Manual' }}</a>{% endif %}
+  </div>
 </div>
 {% endif %}
 
@@ -78,13 +85,14 @@
 </div>
 {% endfor %}
 
-{% if t.log %}
+{% if t.log or editable %}
 <div class="section" id="log">
   <div class="section-header">Maintenance Log</div>
   <div class="group">
     {% for e in t.log %}
     <div class="row selectable"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>
     {% endfor %}
+    {% if editable %}<a class="row action" href="{{ t.url }}/log">{{ icon("plus", "lead-ic") }}Log Maintenance</a>{% endif %}
   </div>
   {% if t.log_notes_html %}<div class="section-footer">{{ t.log_notes_html|striptags }}</div>{% endif %}
 </div>

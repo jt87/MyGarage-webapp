@@ -12,6 +12,8 @@ import json
 import logging
 import mimetypes
 import os
+import re
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,8 +32,8 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import auth, repo
-from .sync import RepoSync, Watcher
+from . import auth, edit, repo
+from .sync import RepoSync, Watcher, WriteError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -60,6 +62,10 @@ GITHUB_REPO = setting("GITHUB_REPO")  # "owner/name", for "Edit on GitHub" links
 WEBHOOK_SECRET = setting("WEBHOOK_SECRET")
 # How stale the cached clone may get before a page view asks GitHub (seconds).
 FRESHNESS_SECONDS = float(os.environ.get("FRESHNESS_SECONDS", "300"))
+# READ_ONLY=true hides every way to change the data repo from the app.
+READ_ONLY = os.environ.get("READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on")
+# GitHub rejects files over 100 MB and warns over 50 MB.
+MAX_UPLOAD_MB = min(95, int(os.environ.get("MAX_UPLOAD_MB", "50")))
 
 sync = RepoSync(
     REPO_PATH,
@@ -80,9 +86,22 @@ if not auth_cfg.configured and os.environ.get("AUTH_USERNAME") and os.environ.ge
 
 env = Environment(loader=FileSystemLoader(HERE / "templates"),
                   autoescape=select_autoescape(["html"]))
+def static_version() -> str:
+    """Changes whenever a file in static/ does: busts caches and updates the service worker."""
+    h = hashlib.sha1()
+    for p in sorted((HERE / "static").rglob("*")):
+        if p.is_file():
+            h.update(p.relative_to(HERE).as_posix().encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()[:10]
+
+
+STATIC_VERSION = static_version()
+
 env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
                    github_repo=GITHUB_REPO, branch=sync.branch, auth=auth_cfg,
-                   METHODS=auth.METHODS, REQUIRED=auth.REQUIRED)
+                   METHODS=auth.METHODS, REQUIRED=auth.REQUIRED, v=STATIC_VERSION,
+                   editable=not READ_ONLY, max_upload_mb=MAX_UPLOAD_MB)
 env.filters["q"] = lambda s: quote(str(s))
 
 
@@ -115,6 +134,8 @@ def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLRes
     ctx.setdefault("tab", TAB_FOR.get(request.url.path.split("/")[1], ""))
     ctx.setdefault("back", None)
     ctx.setdefault("title", "")
+    ctx.setdefault("flash", request.query_params.get("msg", ""))
+    ctx.setdefault("error", request.query_params.get("error", ""))
     # Log Out only makes sense for a forms login with a real session.
     ctx["can_logout"] = auth_cfg.method == "forms" and getattr(request.state, "via", "") == "session"
     return HTMLResponse(env.get_template(template).render(**ctx), status_code=status,
@@ -231,6 +252,422 @@ async def viewer(request: Request):
     return render(request, "viewer.html", rel=rel, name=full.name, kind=kind,
                   url="/files/" + quote(rel), owner=owner, back=owner, title=full.name, tab=tab,
                   thumb=f"/thumb/{quote(rel)}?v={int(full.stat().st_mtime)}")
+
+
+# --------------------------------------------------------------------------- editing
+
+class EditIds:
+    """Remembers recent edit ids so an edit re-sent from a device's outbox
+    (the reply was lost, say) is saved once, not twice."""
+
+    def __init__(self, path: Path, keep: int = 1000):
+        self.path, self.keep = path, keep
+        try:
+            self.ids = list(json.loads(path.read_text()))
+        except (OSError, ValueError):
+            self.ids = []
+
+    def __contains__(self, edit_id: str) -> bool:
+        return bool(edit_id) and edit_id in self.ids
+
+    def add(self, edit_id: str) -> None:
+        if not edit_id or edit_id in self.ids:
+            return
+        self.ids = (self.ids + [edit_id])[-self.keep:]
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.ids))
+            tmp.replace(self.path)
+        except OSError as e:
+            logging.getLogger("garage").warning("could not save edit ids: %s", e)
+
+
+edit_ids = EditIds(CACHE_PATH / "edit-ids.json")
+
+
+def wants_json(request: Request) -> bool:
+    return "application/json" in request.headers.get("accept", "")
+
+
+def with_query(url: str, key: str, value: str) -> str:
+    base, _, frag = url.partition("#")
+    sep = "&" if "?" in base else "?"
+    return f"{base}{sep}{key}={quote(value)}" + (f"#{frag}" if frag else "")
+
+
+def edit_done(request: Request, url: str, msg: str) -> Response:
+    if wants_json(request):
+        return JSONResponse({"ok": True, "url": url, "message": msg})
+    return RedirectResponse(with_query(url, "msg", msg), status_code=303)
+
+
+def edit_failed(request: Request, back: str, msg: str, status: int, retry: bool = False) -> Response:
+    if wants_json(request):
+        return JSONResponse({"ok": False, "error": msg, "retry": retry}, status_code=status)
+    return RedirectResponse(with_query(back, "error", msg), status_code=303)
+
+
+def editor_name(request: Request) -> str:
+    via = getattr(request.state, "via", "")
+    who = "API key" if via == "api" else auth_cfg.username if via in ("session", "basic") else ""
+    return f"{who} via {SITE_TITLE}" if who else SITE_TITLE
+
+
+async def save_edit(request: Request, form, mutate, message: str, back: str,
+                    ok_url, ok_msg: str) -> Response:
+    """Run `mutate` against the latest copy of the repo and publish it.
+
+    `ok_url` may be a callable, for edits (a new tool) whose page isn't
+    known until the change is made.
+    """
+    if READ_ONLY:
+        return edit_failed(request, back, "Editing is turned off (READ_ONLY).", 403)
+    edit_id = str(form.get("edit_id", ""))[:64]
+    url = ok_url() if callable(ok_url) else ok_url
+    if edit_id in edit_ids:
+        return edit_done(request, url, ok_msg)
+    try:
+        await anyio.to_thread.run_sync(sync.write, mutate, message, editor_name(request))
+    except edit.Conflict as e:
+        return edit_failed(request, back, f"{e} was changed on another device while you were "
+                           "editing, so nothing was saved. Reload to see the latest, then try "
+                           "again.", 409)
+    except edit.Invalid as e:
+        return edit_failed(request, back, str(e), 400)
+    except WriteError as e:
+        return edit_failed(request, back, str(e), 503 if e.retry else 502, retry=e.retry)
+    edit_ids.add(edit_id)
+    inventory.invalidate()
+    return edit_done(request, ok_url() if callable(ok_url) else url, ok_msg)
+
+
+def tool_or_404(request: Request) -> repo.Tool:
+    t = inventory.get().tool(request.path_params["slug"])
+    if not t:
+        raise HTTPException(404)
+    return t
+
+
+def tool_readme(root: Path, slug: str) -> Path:
+    p = root / "tools" / slug / "README.md"
+    if not p.parent.is_dir():
+        raise edit.Invalid("This tool isn't in the repo any more.")
+    return p
+
+
+def read_text(p: Path) -> str:
+    try:
+        return p.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
+def write_text(p: Path, text: str) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(f".{p.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(p)
+
+
+def money_text(value: str, approx: bool = False) -> str:
+    """"150" -> "$150" ("~$150" for an estimate); anything else as typed."""
+    value = value.strip()
+    if re.fullmatch(r"[\d,]+(?:\.\d{1,2})?", value):
+        return ("~$" if approx else "$") + value
+    return value
+
+
+def today() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+async def tool_log(request: Request):
+    """Add a maintenance log entry."""
+    t = tool_or_404(request)
+    back = f"{t.url}/log"
+    if request.method == "GET":
+        return render(request, "edit_log.html", t=t, back=(t.url, t.model_name),
+                      title="Log Maintenance", today=today())
+    form = await request.form()
+    date, what = str(form.get("date", "")).strip(), str(form.get("what", "")).strip()
+
+    def mutate(root: Path) -> list[str]:
+        p = tool_readme(root, t.slug)
+        write_text(p, edit.add_log_entry(read_text(p), date, what))
+        return [f"tools/{t.slug}/README.md"]
+
+    return await save_edit(request, form, mutate, f"{t.model_name}: {what[:60]}", back,
+                           f"{t.url}#log", "Maintenance logged")
+
+
+def tool_form_state(t: repo.Tool, text: str, main_text: str) -> dict:
+    """What the details form shows, also sent back as `base` for merging."""
+    model_name, subtitle = edit.split_title(text)
+    inv_row = edit.get_inventory_row(main_text, t.slug)
+    specs = [(k, v) for k, v in edit.get_specs(text) if k.strip().lower() != "category"]
+    return {
+        "model_name": model_name or t.model_name,
+        "subtitle": subtitle,
+        "category": "" if t.category == "Uncategorized" else t.category,
+        "paid": inv_row.get("paid", ""),
+        "value": inv_row.get("value", ""),
+        "specs": [list(r) for r in specs],
+        "parts": [(r + ["", "", "", ""])[:4] for r in edit.get_table(text, "consumables")],
+    }
+
+
+def current_category(text: str, main_text: str, slug: str) -> str:
+    inv_row = edit.get_inventory_row(main_text, slug)
+    if repo.plain(inv_row.get("category", "")):
+        return repo.plain(inv_row["category"])
+    spec = dict((k.strip().lower(), v) for k, v in edit.get_specs(text))
+    return repo.plain(spec.get("category", "")).split("(")[0].strip()
+
+
+PART_HEADER = ["Item", "Spec / part #", "Where to buy", "Typical price"]
+
+
+async def tool_edit(request: Request):
+    """Edit a tool's name, inventory values, details table and parts."""
+    t = tool_or_404(request)
+    back = f"{t.url}/edit"
+    if request.method == "GET":
+        state = tool_form_state(t, read_text(REPO_PATH / "tools" / t.slug / "README.md"),
+                                read_text(REPO_PATH / "README.md"))
+        return render(request, "edit_tool.html", t=t, s=state, base=json.dumps(state),
+                      back=(t.url, t.model_name), title="Edit Tool")
+    form = await request.form()
+    try:
+        base = json.loads(str(form.get("base", "")))
+    except ValueError:
+        return edit_failed(request, back, "Reload the page and try again.", 400)
+    pairs = lambda *names: [list(r) for r in zip(*(form.getlist(n) for n in names))]
+    clean = lambda rows: [[str(c).strip() for c in r] for r in rows if any(str(c).strip() for c in r)]
+    mine = {
+        "model_name": str(form.get("model_name", "")).strip(),
+        "subtitle": str(form.get("subtitle", "")).strip(),
+        "category": str(form.get("category", "")).strip(),
+        "paid": money_text(str(form.get("paid", ""))),
+        "value": money_text(str(form.get("value", "")), approx=True),
+        "specs": clean(pairs("spec_k", "spec_v")),
+        "parts": clean(pairs("part_item", "part_spec", "part_where", "part_price")),
+    }
+    if not mine["model_name"]:
+        return edit_failed(request, back, "Enter the brand and model.", 400)
+    if any(not k for k, _ in mine["specs"]):
+        return edit_failed(request, back, "Every detail needs a label.", 400)
+
+    def mutate(root: Path) -> list[str]:
+        p, main_p = tool_readme(root, t.slug), root / "README.md"
+        text, main_text = read_text(p), read_text(main_p)
+        cur = tool_form_state(t, text, main_text)
+        cur["category"] = current_category(text, main_text, t.slug)
+        m = edit.merge_value
+        model_name = m("The name", base["model_name"], mine["model_name"], cur["model_name"])
+        subtitle = m("The name", base["subtitle"], mine["subtitle"], cur["subtitle"])
+        category = m("The category", base["category"], mine["category"], cur["category"])
+        paid = m("The price paid", base["paid"], mine["paid"], cur["paid"])
+        value = m("The replacement value", base["value"], mine["value"], cur["value"])
+        specs = edit.merge_specs([tuple(r) for r in base["specs"]],
+                                 [tuple(r) for r in mine["specs"]],
+                                 [tuple(r) for r in cur["specs"]])
+        parts = m("The parts list", [list(r) for r in base["parts"]], mine["parts"], cur["parts"])
+
+        new = edit.set_title(text, model_name, subtitle)
+        all_specs = edit.get_specs(text)
+        cat_row = next((i for i, (k, _) in enumerate(all_specs) if k.strip().lower() == "category"), None)
+        has_inv = bool(edit.get_inventory_row(main_text, t.slug))
+        if cat_row is not None:
+            specs.insert(min(cat_row, len(specs)), (all_specs[cat_row][0],
+                         category if category != cur["category"] else all_specs[cat_row][1]))
+        elif category and not has_inv:
+            specs.insert(0, ("Category", category))
+        new = edit.set_specs(new, specs)
+        if parts != cur["parts"]:
+            new = edit.set_table(new, "consumables", "Consumables & parts", PART_HEADER, parts)
+        changed = []
+        if new != text:
+            write_text(p, new)
+            changed.append(f"tools/{t.slug}/README.md")
+        inv_values = {k: v for k, v in (("category", category), ("paid", paid), ("value", value))
+                      if v != cur[k]}
+        if inv_values and (has_inv or main_p.exists()):
+            if not has_inv:
+                inv_values["tool"] = f"{model_name} {subtitle}".strip()
+            new_main = edit.set_inventory_row(main_text, t.slug, inv_values)
+            if new_main != main_text:
+                write_text(main_p, new_main)
+                changed.append("README.md")
+        return changed
+
+    return await save_edit(request, form, mutate, f"Edit {mine['model_name']}", back, t.url,
+                           "Changes saved")
+
+
+def text_hash(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()
+
+
+async def tool_markdown(request: Request):
+    """Edit a tool's README.md as text, for anything the form doesn't cover."""
+    t = tool_or_404(request)
+    p = REPO_PATH / "tools" / t.slug / "README.md"
+    back = f"{t.url}/markdown"
+    if request.method == "GET":
+        text = read_text(p)
+        return render(request, "edit_markdown.html", t=t, text=text, base=text_hash(text),
+                      back=(f"{t.url}/edit", "Edit Tool"), title="README.md")
+    form = await request.form()
+    new = str(form.get("text", "")).replace("\r\n", "\n").rstrip() + "\n"
+    base, force = str(form.get("base", "")), form.get("force") == "1"
+    if not new.strip():
+        return edit_failed(request, back, "The README can't be empty.", 400)
+
+    def mutate(root: Path) -> list[str]:
+        rp = tool_readme(root, t.slug)
+        cur = read_text(rp)
+        if text_hash(cur) != base and cur != new and not force:
+            raise edit.Conflict("This README")
+        if cur == new:
+            return []
+        write_text(rp, new)
+        return [f"tools/{t.slug}/README.md"]
+
+    return await save_edit(request, form, mutate, f"Edit {t.model_name} README", back, t.url,
+                           "Changes saved")
+
+
+UPLOAD_KINDS = {"photo": "Photo", "receipt": "Receipt", "manual": "Manual", "document": "Document"}
+
+
+async def tool_add(request: Request):
+    """Add photos, receipts, manuals or documents to a tool's folder."""
+    t = tool_or_404(request)
+    back = f"{t.url}/add"
+    if request.method == "GET":
+        kind = request.query_params.get("kind", "photo")
+        return render(request, "edit_add.html", t=t, kinds=UPLOAD_KINDS,
+                      kind=kind if kind in UPLOAD_KINDS else "photo",
+                      back=(t.url, t.model_name), title="Add Files")
+    if int(request.headers.get("content-length") or 0) > (MAX_UPLOAD_MB * 4 + 1) * 1024 * 1024:
+        return edit_failed(request, back, f"Add fewer files at once (up to {MAX_UPLOAD_MB * 4} MB).", 413)
+    async with request.form(max_files=20) as form:
+        kind = str(form.get("kind", "photo"))
+        if kind not in UPLOAD_KINDS:
+            kind = "photo"
+        uploads = [f for f in form.getlist("file") if hasattr(f, "filename") and f.filename]
+        if not uploads:
+            return edit_failed(request, back, "Choose a file to add.", 400)
+        for f in uploads:
+            if (f.size or 0) > MAX_UPLOAD_MB * 1024 * 1024:
+                return edit_failed(request, back,
+                                   f"{f.filename} is over {MAX_UPLOAD_MB} MB, too big for GitHub.", 413)
+        now = datetime.now()
+
+        def mutate(root: Path) -> list[str]:
+            folder = tool_readme(root, t.slug).parent
+            existing = {p.name for p in folder.iterdir()}
+            changed = []
+            for f in uploads:
+                name = edit.upload_name(f.filename, kind, existing, now)
+                existing.add(name)
+                f.file.seek(0)
+                tmp = folder / f".{name}.tmp"
+                with open(tmp, "wb") as out:
+                    shutil.copyfileobj(f.file, out)
+                tmp.replace(folder / name)
+                changed.append(f"tools/{t.slug}/{name}")
+            return changed
+
+        n = len(uploads)
+        label = UPLOAD_KINDS[kind].lower() + ("s" if n > 1 else "")
+        return await save_edit(request, form, mutate,
+                               f"Add {n if n > 1 else 'a'} {label} to {t.model_name}", back,
+                               t.url, f"Added {n} {label}" if n > 1 else f"{UPLOAD_KINDS[kind]} added")
+
+
+async def tool_new(request: Request):
+    """Create a tool folder and README, and add it to the inventory table."""
+    back = "/tools/new"
+    if request.method == "GET":
+        return render(request, "edit_new.html", back=("/tools", "Tools"), title="New Tool",
+                      categories=[c for c, _ in inventory.get().categories if c != "Uncategorized"])
+    form = await request.form()
+    f = {k: str(form.get(k, "")).strip() for k in
+         ("model_name", "subtitle", "category", "model_no", "serial", "purchased", "paid", "value")}
+    if not f["model_name"]:
+        return edit_failed(request, back, "Enter the brand and model.", 400)
+    paid, value = money_text(f["paid"]), money_text(f["value"], approx=True)
+    created = {"slug": ""}
+
+    def mutate(root: Path) -> list[str]:
+        base_slug = edit.slugify(f["model_name"]) or "tool"
+        slug, n = base_slug, 2
+        while (root / "tools" / slug).exists():
+            slug, n = f"{base_slug}-{n}", n + 1
+        created["slug"] = slug
+        specs = [("Category", f["category"]), ("Model #", f["model_no"]), ("Serial #", f["serial"]),
+                 ("Purchased", f["purchased"]), ("Replacement value", value)]
+        write_text(root / "tools" / slug / "README.md",
+                   edit.new_tool_readme(f["model_name"], f["subtitle"], specs))
+        main_p = root / "README.md"
+        write_text(main_p, edit.set_inventory_row(read_text(main_p), slug, {
+            "tool": f"{f['model_name']} {f['subtitle']}".strip(), "category": f["category"],
+            "paid": paid, "value": value}))
+        return [f"tools/{slug}/README.md", "README.md"]
+
+    return await save_edit(request, form, mutate, f"Add {f['model_name']}", back,
+                           lambda: f"/tools/{created['slug']}" if created["slug"] else "/tools",
+                           "Tool added")
+
+
+# --------------------------------------------------------------------------- offline
+
+async def offline_page(request: Request):
+    return render(request, "offline.html", title="Offline", tab="")
+
+
+async def offline_manifest(request: Request):
+    """Everything a device should keep for offline use, and a version that
+    changes whenever the repo does (the service worker re-downloads then)."""
+    inv = inventory.get()
+    pages = ["/", "/tools", "/consumables", "/projects", "/insurance", "/reference", "/search",
+             "/offline"]
+    thumbs: list[str] = []
+    files: list[dict] = []
+
+    def add_files(items):
+        for f in items:
+            if f.kind in ("pdf", "model", "image"):
+                pages.append("/view/" + quote(f.path))
+            files.append({"url": f.url, "size": f.size, "kind": f.kind})
+
+    for t in inv.tools:
+        pages.append(t.url)
+        if not READ_ONLY:
+            pages += [f"{t.url}/edit", f"{t.url}/log", f"{t.url}/add"]
+        if t.cover:
+            thumbs += [t.cover.thumb + "&w=320", t.cover.thumb + "&w=640"]
+        thumbs += [p.thumb + "&w=1280" for p in t.photos]
+        add_files(t.photos + t.manuals + t.documents + t.proofs + t.other_files)
+    for p in inv.projects:
+        pages.append(p.url)
+        thumbs += [f.thumb + "&w=640" for f in p.files if f.kind == "image"]
+        add_files(p.files)
+    pages += [r.url for r in inv.references]
+    if not READ_ONLY:
+        pages.append("/tools/new")
+    version = sync.head if sync.git_mode else sync.fingerprint()
+    return JSONResponse({"version": f"{version}:{STATIC_VERSION}",
+                         "pages": list(dict.fromkeys(pages)),
+                         "thumbs": list(dict.fromkeys(thumbs)), "files": files},
+                        headers={"Cache-Control": "no-store"})
+
+
+async def service_worker(request: Request):
+    js = (HERE / "static" / "sw.js").read_text().replace("__VERSION__", STATIC_VERSION)
+    return Response(js, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 
 # --------------------------------------------------------------------------- files
@@ -474,7 +911,7 @@ async def logout(request: Request):
 
 async def settings(request: Request):
     return render(request, "settings.html", back=("/", SITE_TITLE), title="Settings", tab="garage",
-                  msg=request.query_params.get("msg", ""), error=request.query_params.get("error", ""))
+                  flash="", msg=request.query_params.get("msg", ""), error=request.query_params.get("error", ""))
 
 
 def back_to_settings(msg: str = "", error: str = "") -> RedirectResponse:
@@ -580,10 +1017,11 @@ async def authenticate(request: Request) -> str | None:
 
 
 # Never need a login: assets, the webhook (it checks GitHub's signature) and the health check.
-OPEN_PATHS = ("/static/", "/manifest.webmanifest", "/webhook/github", "/healthz")
+OPEN_PATHS = ("/static/", "/manifest.webmanifest", "/webhook/github", "/healthz", "/sw.js")
 # Requests that don't render repo content skip the freshness check.
 NO_FRESH_PATHS = ("/static/", "/thumb/", "/files/", "/healthz", "/manifest.webmanifest",
-                  "/webhook/", "/login", "/logout", "/setup", "/settings", "/sync")
+                  "/webhook/", "/login", "/logout", "/setup", "/settings", "/sync", "/sw.js",
+                  "/offline")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -643,7 +1081,15 @@ async def not_found(request: Request, exc: HTTPException):
 routes = [
     Route("/", home),
     Route("/tools", tools),
+    Route("/tools/new", tool_new, methods=["GET", "POST"]),
     Route("/tools/{slug}", tool),
+    Route("/tools/{slug}/log", tool_log, methods=["GET", "POST"]),
+    Route("/tools/{slug}/edit", tool_edit, methods=["GET", "POST"]),
+    Route("/tools/{slug}/markdown", tool_markdown, methods=["GET", "POST"]),
+    Route("/tools/{slug}/add", tool_add, methods=["GET", "POST"]),
+    Route("/offline", offline_page),
+    Route("/offline/manifest.json", offline_manifest),
+    Route("/sw.js", service_worker),
     Route("/consumables", consumables),
     Route("/projects", projects),
     Route("/projects/{slug}", project),

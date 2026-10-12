@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% block content %}
+<div class="empty">
+  {{ icon("smartphone") }}
+  <h1 class="t-title2">Not Saved on This Device</h1>
+  <p class="secondary">You're offline, and this page hasn't been saved for offline use yet. Open it once while you're online and it will be kept.</p>
+  <p><a href="/">Go to {{ site_title }}</a></p>
+</div>
+{% endblock %}

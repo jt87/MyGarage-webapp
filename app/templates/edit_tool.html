@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% macro remove_btn() -%}<button class="remove-btn" type="button" data-remove-row aria-label="Remove">{{ icon("minus") }}</button>{%- endmacro %}
+{% macro spec_row(k="", v="") -%}
+<div class="row field pair" data-row><input class="row-input key" name="spec_k" value="{{ k }}" placeholder="Label" aria-label="Label"><input class="row-input" name="spec_v" value="{{ v }}" placeholder="Value" aria-label="Value">{{ remove_btn() }}</div>
+{%- endmacro %}
+{% macro part_row(p=["", "", "", ""]) -%}
+<div class="row part" data-row>
+  <div class="part-fields">
+    <input class="row-input strong" name="part_item" value="{{ p[0] }}" placeholder="Item (e.g. Blade)" aria-label="Item">
+    <input class="row-input" name="part_spec" value="{{ p[1] }}" placeholder="Spec / part # (bold: **B1040**)" aria-label="Spec or part number">
+    <input class="row-input" name="part_where" value="{{ p[2] }}" placeholder="Where to buy" aria-label="Where to buy">
+    <input class="row-input" name="part_price" value="{{ p[3] }}" placeholder="Typical price" aria-label="Typical price">
+  </div>{{ remove_btn() }}
+</div>
+{%- endmacro %}
+{% block content %}
+<div class="hero"><h1 data-title>Edit Tool</h1><p class="t-subhead secondary">{{ t.model_name }}</p></div>
+{% include "_form_status.html" %}
+<form method="post" action="{{ t.url }}/edit" data-edit data-label="Edit · {{ t.model_name }}" data-done="{{ t.url }}">
+  <input type="hidden" name="base" value="{{ base }}">
+  <div class="section">
+    <div class="section-header">Name</div>
+    <div class="group">
+      <label class="row field"><span class="field-label">Brand &amp; model</span><input class="row-input" name="model_name" value="{{ s.model_name }}" required></label>
+      <label class="row field"><span class="field-label">Name</span><input class="row-input" name="subtitle" value="{{ s.subtitle }}" placeholder="10&quot; Table Saw"></label>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-header">Inventory</div>
+    <div class="group">
+      <label class="row field"><span class="field-label">Category</span><input class="row-input" name="category" value="{{ s.category }}"></label>
+      <label class="row field"><span class="field-label">Paid</span><input class="row-input" name="paid" value="{{ s.paid }}" inputmode="decimal" placeholder="$150"></label>
+      <label class="row field"><span class="field-label">Replacement</span><input class="row-input" name="value" value="{{ s.value }}" inputmode="decimal" placeholder="~$300"></label>
+    </div>
+    <p class="section-footer">Shown on the Insurance page.</p>
+  </div>
+  <div class="section">
+    <div class="section-header">Details</div>
+    <div class="group" data-rows="spec">
+      {% for k, v in s.specs %}{{ spec_row(k, v) }}{% endfor %}
+      {{ spec_row() }}
+    </div>
+    <div class="group add-group"><button class="row action" type="button" data-add-row="spec">{{ icon("plus", "lead-ic") }}Add Detail</button></div>
+    <p class="section-footer">Model #, Serial #, Purchased (date, store, price) and Replacement value appear on the tool page and the insurance report.</p>
+  </div>
+  <div class="section">
+    <div class="section-header">Parts &amp; Consumables</div>
+    <div class="group" data-rows="part">
+      {% for p in s.parts %}{{ part_row(p) }}{% endfor %}
+      {{ part_row() }}
+    </div>
+    <div class="group add-group"><button class="row action" type="button" data-add-row="part">{{ icon("plus", "lead-ic") }}Add Part</button></div>
+    <p class="section-footer">Put part numbers in bold (<code>**B1040**</code>) for exact store searches. Name stores in “Where to buy” (Amazon, Home Depot, Lowe's…) to get their buttons.</p>
+  </div>
+  <div class="section"><div class="group"><button class="row action center" type="submit">Save</button></div></div>
+</form>
+<div class="section">
+  <div class="group">
+    <a class="row" href="{{ t.url }}/markdown"><span class="row-body">Edit README.md</span><span class="chev"></span></a>
+  </div>
+  <p class="section-footer">For notes, settings and anything else on the page.</p>
+</div>
+<template data-row-template="spec">{{ spec_row() }}</template>
+<template data-row-template="part">{{ part_row() }}</template>
+{% endblock %}

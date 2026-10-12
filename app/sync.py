@@ -14,8 +14,11 @@ day, far inside GitHub's free limits. A hard cap (MAX_CHECKS_PER_HOUR) backs
 this up, and the last check time is saved to disk so restarts don't cause a
 burst of checks.
 
-GIT_TOKEN (a read-only GitHub token) is sent as an HTTP header so it never
-lands in .git/config. With GIT_REPO_URL unset, REPO_PATH is a folder you
+Edits made in the app are committed and pushed by `write`, under the same
+lock, so a pull can never wipe a commit that hasn't reached GitHub yet.
+
+GIT_TOKEN (a GitHub token; Contents read-only, or read and write for editing)
+is sent as an HTTP header so it never lands in .git/config. With GIT_REPO_URL unset, REPO_PATH is a folder you
 mounted yourself and is re-read whenever a file in it changes.
 """
 
@@ -35,6 +38,38 @@ from pathlib import Path
 log = logging.getLogger("garage.sync")
 
 MAX_CHECKS_PER_HOUR = 60
+COMMIT_EMAIL = os.environ.get("GIT_AUTHOR_EMAIL", "mygarage@users.noreply.github.com")
+
+
+class WriteError(Exception):
+    """A change couldn't be saved. `retry` is True when trying later may work."""
+
+    def __init__(self, message: str, retry: bool = False):
+        super().__init__(message)
+        self.retry = retry
+
+
+def is_network_error(msg: str) -> bool:
+    msg = msg.lower()
+    return any(s in msg for s in ("could not resolve", "timed out", "failed to connect",
+                                  "connection reset", "network is unreachable",
+                                  "operation timed out", "unable to access", "early eof",
+                                  "502", "503", "504")) and not any(
+        s in msg for s in ("403", "401", "permission", "denied"))
+
+
+def friendly_git_error(msg: str) -> str:
+    low = msg.lower()
+    if any(s in low for s in ("403", "permission", "denied", "write access")):
+        return ("GitHub refused the change. Give the GIT_TOKEN fine-grained token "
+                "Contents: Read and write access to your data repo.")
+    if "protected branch" in low or "gh006" in low:
+        return "GitHub refused the change because the branch is protected."
+    if "large" in low and ("file" in low or "gh001" in low):
+        return "GitHub refused the change because a file is too large (100 MB limit)."
+    if is_network_error(msg):
+        return "Can't reach GitHub right now."
+    return f"Couldn't save to GitHub: {msg}"
 
 
 def _today() -> str:
@@ -135,7 +170,9 @@ class RepoSync:
                 msg = msg.replace(self.token, "***")
             lines = msg.splitlines()
             fatal = next((l for l in lines if l.startswith(("fatal:", "error:"))), "")
-            raise RuntimeError(fatal or (lines[-1] if lines else f"git {args[0]} failed"))
+            err = RuntimeError(fatal or (lines[-1] if lines else f"git {args[0]} failed"))
+            err.detail = msg  # all of git's output, for telling rejections apart
+            raise err
         return res.stdout.strip()
 
     def sync_once(self) -> bool:
@@ -210,6 +247,72 @@ class RepoSync:
         if remote and remote != self.head:
             return self.sync_once()
         return False
+
+    # ------------------------------------------------------------------ writes
+
+    def write(self, mutate, message: str, author: str = "MyGarage") -> bool:
+        """Apply `mutate(root) -> [changed paths]` to the latest copy and publish it.
+
+        In git mode this fetches the branch tip, applies the change, commits
+        and pushes, all under the sync lock so a pull can't wipe the commit
+        before it reaches GitHub. If someone pushed in between, it starts over
+        from their commit (the edit is re-applied, not merged by git). Any
+        failure resets the clone to GitHub's copy. Returns True if anything
+        changed. Raises WriteError, or whatever `mutate` raises.
+        """
+        with self._lock:
+            if not self.git_mode:
+                return bool(mutate(self.path))
+            for attempt in range(3):
+                try:
+                    self._git("fetch", "--depth", "1", self.url, self.branch, cwd=self.path)
+                    self._count("fetch")
+                    self._git("reset", "--hard", "FETCH_HEAD", cwd=self.path)
+                    self._git("clean", "-fdq", cwd=self.path)
+                    self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+                except RuntimeError as e:
+                    self.last_error = str(e)
+                    detail = getattr(e, "detail", str(e))
+                    raise WriteError(friendly_git_error(detail),
+                                     retry="403" not in detail and "401" not in detail) from e
+                try:
+                    paths = mutate(self.path)
+                    if not paths:
+                        return False
+                    self._git("add", "-A", "--", *paths, cwd=self.path)
+                    if not self._git("status", "--porcelain", "--", *paths, cwd=self.path):
+                        return False
+                    self._git("-c", f"user.name={author}", "-c", f"user.email={COMMIT_EMAIL}",
+                              "commit", "-q", "-m", message, cwd=self.path)
+                    self._git("push", "-q", self.url, f"HEAD:refs/heads/{self.branch}",
+                              cwd=self.path, timeout=300)
+                except BaseException as e:
+                    self._reset_quietly()
+                    if isinstance(e, RuntimeError):
+                        detail = getattr(e, "detail", str(e))
+                        rejected = any(s in detail for s in ("[rejected]", "fetch first",
+                                                             "non-fast-forward", "stale info"))
+                        if rejected and attempt < 2:
+                            continue  # someone else pushed first: redo on top of theirs
+                        raise WriteError(friendly_git_error(detail),
+                                         retry=is_network_error(detail)) from e
+                    raise
+                self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+                now = datetime.now(timezone.utc)
+                self.last_checked = self.last_changed = now
+                self._checked_at = time.time()
+                self.last_error = ""
+                self._save_state()
+                log.info("pushed %s: %s", self.head[:7], message.splitlines()[0])
+                return True
+            raise WriteError("GitHub kept changing while saving. Try again.", retry=True)
+
+    def _reset_quietly(self) -> None:
+        for args in (("reset", "--hard", "FETCH_HEAD"), ("clean", "-fdq")):
+            try:
+                self._git(*args, cwd=self.path)
+            except RuntimeError as e:
+                log.warning("could not reset after a failed write: %s", e)
 
     # ------------------------------------------------------------------ loop
 

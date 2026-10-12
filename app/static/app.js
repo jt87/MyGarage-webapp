@@ -23,7 +23,7 @@
   // pages from its back/forward cache, so reload a stale page on return.
   const loadedAt = Date.now();
   const STALE_MS = 2 * 60 * 1000;
-  const canReload = () => !$("dialog[open]") && !$("#pdf") && !document.activeElement?.matches("input");
+  const canReload = () => !$("dialog[open]") && !$("#pdf") && !$("form[data-edit]") && !document.activeElement?.matches("input, textarea");
   addEventListener("pageshow", (e) => { if (e.persisted && Date.now() - loadedAt > STALE_MS) location.reload(); });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && Date.now() - loadedAt > STALE_MS && canReload()) location.reload();
@@ -210,4 +210,322 @@
       else location.href = "/search";
     }
   });
+
+  // ---------------------------------------------------------------- flash message
+  // Saves redirect back with ?msg=…; show it once, then tidy the URL.
+  if (toastEl && toastEl.dataset.flash) toast(toastEl.dataset.flash);
+  if (/[?&](msg|error)=/.test(location.search)) {
+    const u = new URL(location.href);
+    u.searchParams.delete("msg");
+    if (!$("[data-form-error]:not([hidden])")) u.searchParams.delete("error");
+    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+  }
+
+  // ---------------------------------------------------------------- service worker
+  // Needs HTTPS (or localhost); over plain http on the LAN the app still works,
+  // just not offline.
+  const sw = "serviceWorker" in navigator && isSecureContext ? navigator.serviceWorker : null;
+  function swCall(msg, onProgress) {
+    return new Promise((resolve) => {
+      const target = sw && sw.controller;
+      if (!target) return resolve(null);
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e) => {
+        if (e.data && e.data.done) resolve(e.data.result);
+        else if (onProgress) onProgress(e.data);
+      };
+      target.postMessage(msg, [ch.port2]);
+    });
+  }
+  if (sw) {
+    sw.register("/sw.js").catch(() => {});
+    const kick = () => { if (navigator.onLine && !document.body.dataset.offlineCopy) swCall({ type: "refresh" }); };
+    if (sw.controller) kick(); else sw.addEventListener("controllerchange", kick, { once: true });
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  }
+
+  // ---------------------------------------------------------------- offline banner
+  const offlineBar = $("[data-offline-bar]");
+  function showOffline() {
+    const copy = document.body.dataset.offlineCopy !== undefined;
+    const off = !navigator.onLine || copy;
+    if (offlineBar) {
+      const at = Number(document.body.dataset.offlineCopy);
+      const when = at ? ` from ${new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "";
+      $("[data-offline-text]", offlineBar).textContent = !navigator.onLine
+        ? `Offline. Showing the copy saved on this device${when}.`
+        : `Slow connection. Showing the copy saved on this device${when}.`;
+      offlineBar.hidden = !off;
+    }
+    const note = $("[data-offline-note]");
+    if (note) note.hidden = navigator.onLine;
+  }
+  showOffline();
+  addEventListener("online", showOffline);
+  addEventListener("offline", showOffline);
+
+  // ---------------------------------------------------------------- outbox (edits waiting to send)
+  // Edits made without a connection are kept in IndexedDB, files included,
+  // and sent in order the next time the app is open and online. Each carries
+  // an edit_id so a resend after a lost reply isn't saved twice.
+  const outbox = (() => {
+    let dbp;
+    const db = () => dbp || (dbp = new Promise((res, rej) => {
+      const r = indexedDB.open("mygarage", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("outbox", { keyPath: "id" });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+    const tx = async (mode, fn) => {
+      const d = await db();
+      return new Promise((res, rej) => {
+        const t = d.transaction("outbox", mode);
+        const out = fn(t.objectStore("outbox"));
+        t.oncomplete = () => res(out && "result" in out ? out.result : undefined);
+        t.onerror = () => rej(t.error);
+      });
+    };
+    return {
+      add: (item) => tx("readwrite", (s) => s.put(item)),
+      put: (item) => tx("readwrite", (s) => s.put(item)),
+      remove: (id) => tx("readwrite", (s) => s.delete(id)),
+      all: async () => { try { return ((await tx("readonly", (s) => s.getAll())) || []).sort((a, b) => a.created - b.created); } catch { return []; } },
+      clear: () => tx("readwrite", (s) => s.clear()),
+    };
+  })();
+
+  const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+
+  function formItem(form, submitter) {
+    const fd = new FormData(form);
+    if (submitter && submitter.name) fd.set(submitter.name, submitter.value);
+    if (!fd.get("edit_id")) fd.set("edit_id", uuid());
+    // Files become Blobs in IndexedDB; empty file inputs are dropped.
+    const fields = [...fd.entries()].filter(([, v]) => !(v instanceof File) || v.size || v.name);
+    return { id: fd.get("edit_id"), url: form.action, label: form.dataset.label || "Edit",
+             done: form.dataset.done || location.pathname, fields, created: Date.now() };
+  }
+
+  async function send(item) {
+    const fd = new FormData();
+    item.fields.forEach(([k, v]) => (v instanceof Blob ? fd.append(k, v, v.name || "file") : fd.append(k, v)));
+    const res = await fetch(item.url, { method: "POST", body: fd, headers: { Accept: "application/json" },
+                                        credentials: "same-origin", redirect: "manual" });
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (res.status === 401 || res.type === "opaqueredirect") {
+      data = { ok: false, error: "You've been logged out. Log in again and it will be sent.", retry: true, auth: true };
+    }
+    return { status: res.status, ...data };
+  }
+
+  const withMsg = (url, msg) => {
+    const [base, frag] = url.split("#");
+    return `${base}${base.includes("?") ? "&" : "?"}msg=${encodeURIComponent(msg)}${frag ? "#" + frag : ""}`;
+  };
+
+  let flushing = false;
+  async function flush(manual) {
+    if (flushing || !navigator.onLine) return;
+    flushing = true;
+    let sent = 0;
+    try {
+      const run = async () => {
+        for (const item of await outbox.all()) {
+          if (item.error && !manual && !item.retry) continue;
+          let r;
+          try { r = await send(item); } catch { break; }  // still offline
+          if (r.ok) { await outbox.remove(item.id); sent++; continue; }
+          item.error = r.error || `Couldn't save (error ${r.status}).`;
+          item.retry = !!r.retry;
+          await outbox.put(item);
+          if (r.retry) break;  // GitHub or the login is the problem: everything else would fail too
+        }
+      };
+      if (navigator.locks) await navigator.locks.request("mygarage-outbox", run); else await run();
+    } finally {
+      flushing = false;
+    }
+    await renderOutbox();
+    if (sent) {
+      toast(sent === 1 ? "1 Edit Sent" : `${sent} Edits Sent`);
+      if (canReload() && !$("form[data-edit]")) setTimeout(() => location.reload(), 900);
+    }
+  }
+
+  const ago = (t) => {
+    const s = (Date.now() - t) / 1000;
+    return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} hr ago` : new Date(t).toLocaleDateString();
+  };
+  const escHTML = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  async function renderOutbox() {
+    const items = await outbox.all();
+    const note = $("[data-outbox-note]");
+    if (note) {
+      note.hidden = !items.length;
+      note.innerHTML = items.length ? `${items.length} edit${items.length === 1 ? "" : "s"} waiting to send<br>` : "";
+    }
+    $$("[data-outbox]").forEach((box) => {
+      const scope = box.dataset.outbox;
+      const mine = scope ? items.filter((i) => i.done.split(/[?#]/)[0] === scope) : items;
+      box.hidden = !mine.length;
+      if (!mine.length) { box.innerHTML = ""; return; }
+      const authErr = mine.some((i) => i.error && /logged out/i.test(i.error));
+      box.innerHTML = `<div class="section-header">Waiting to Send</div><div class="group">` + mine.map((i) => {
+        const files = i.fields.filter(([, v]) => v instanceof Blob).length;
+        return `<div class="row has-icon" data-item="${escHTML(i.id)}"><span class="tile" style="--tile: var(${i.error && !i.retry ? "--red" : "--orange"})"><svg aria-hidden="true"><use href="/static/icons.svg#${i.error && !i.retry ? "alert-triangle" : "clock"}"/></svg></span>`
+          + `<span class="row-body"><span class="row-title clip">${escHTML(i.label)}</span>`
+          + `<span class="row-sub">${ago(i.created)}${files ? ` · ${files} file${files === 1 ? "" : "s"}` : ""}${i.error ? ` · ${escHTML(i.error)}` : ""}</span></span>`
+          + `<button class="row-btn destructive" type="button" data-discard="${escHTML(i.id)}">Discard</button></div>`;
+      }).join("") + `<button class="row action" type="button" data-send-now>Send Now</button>`
+        + (authErr ? `<a class="row action" href="/login?next=${encodeURIComponent(location.pathname)}">Log In</a>` : "")
+        + `</div><p class="section-footer">Saved on this device. Sent automatically when you're online with the app open.</p>`;
+    });
+  }
+  document.addEventListener("click", async (e) => {
+    const d = e.target.closest("[data-discard]");
+    if (d && confirm("Discard this edit? It hasn't been saved to GitHub.")) {
+      await outbox.remove(d.dataset.discard);
+      renderOutbox();
+    }
+    if (e.target.closest("[data-send-now]")) {
+      if (!navigator.onLine) return toast("You're Offline");
+      flush(true);
+    }
+  });
+  renderOutbox().then(() => flush());
+  addEventListener("online", () => flush());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") flush(); });
+
+  // ---------------------------------------------------------------- edit forms
+  // Sent with fetch so a failed save keeps what was typed. No connection (or
+  // GitHub unreachable): kept in the outbox and sent later.
+  $$("form[data-edit]").forEach((form) => {
+    const errBox = $("[data-form-error]");
+    const showError = (msg) => {
+      if (!errBox) return alert(msg);
+      errBox.textContent = msg;
+      errBox.hidden = false;
+      errBox.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btns = $$("button[type=submit], button:not([type])", form);
+      if (btns.some((b) => b.disabled)) return;
+      const item = formItem(form, ev.submitter);
+      const label = ev.submitter && ev.submitter.textContent;
+      btns.forEach((b) => { b.disabled = true; });
+      if (ev.submitter) ev.submitter.textContent = "Saving…";
+      const restore = () => { btns.forEach((b) => { b.disabled = false; }); if (ev.submitter) ev.submitter.textContent = label; };
+      const queue = async (why) => {
+        try { await outbox.add({ ...item, error: why || "", retry: true }); }
+        catch { restore(); return showError("Couldn't save on this device either. Try again when you're online."); }
+        location.href = withMsg(item.done, why ? "Saved on this device. It will be sent later." : "Saved on this device. It will be sent when you're online.");
+      };
+      if (!navigator.onLine) return queue();
+      let r;
+      try { r = await send(item); } catch { return queue(); }
+      if (r.ok) { location.href = withMsg(r.url || item.done, r.message || "Saved"); return; }
+      if (r.auth) { restore(); return showError("You've been logged out. Log in again in another tab, then Save."); }
+      if (r.retry) return queue(r.error);
+      restore();
+      showError(r.error || `Couldn't save (error ${r.status}).`);
+      const force = $("[data-force]", form);
+      if (force && r.status === 409) force.hidden = false;
+    });
+  });
+
+  // Rows that can be added and removed (details, parts).
+  document.addEventListener("click", (e) => {
+    const add = e.target.closest("[data-add-row]");
+    if (add) {
+      const tpl = $(`template[data-row-template="${add.dataset.addRow}"]`);
+      const rows = $(`[data-rows="${add.dataset.addRow}"]`);
+      if (tpl && rows) {
+        rows.appendChild(tpl.content.cloneNode(true));
+        const input = $("[data-row]:last-child input", rows);
+        if (input) input.focus();
+      }
+    }
+    const rm = e.target.closest("[data-remove-row]");
+    if (rm) rm.closest("[data-row]").remove();
+  });
+
+  // A saved copy of a form may be days old: default to today's date here.
+  $$("input[data-today]").forEach((i) => {
+    const d = new Date();
+    i.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+
+  // Add Files: help text follows the chosen type; the button names the files.
+  $$("[data-kind-help]").forEach((help) => {
+    const sync = () => {
+      const kind = ($("input[name=kind]:checked") || {}).value || "photo";
+      $$("[data-for]", help).forEach((s) => { s.hidden = s.dataset.for !== kind; });
+    };
+    $$("input[name=kind]").forEach((r) => r.addEventListener("change", sync));
+    sync();
+  });
+  $$("[data-file-input]").forEach((input) => input.addEventListener("change", () => {
+    const label = $("[data-file-label]");
+    const n = input.files.length;
+    if (label) label.textContent = n === 1 ? input.files[0].name : n ? `${n} files chosen` : "Choose Photos or Files";
+  }));
+
+  // ---------------------------------------------------------------- offline files
+  $$("[data-file-status]").forEach(async (el) => {
+    const url = el.dataset.fileStatus;
+    const check = async () => {
+      const r = await swCall({ type: "status", urls: [url] });
+      if (!r) return;
+      el.hidden = false;
+      el.textContent = r[url] ? "Saved on this device" : navigator.onLine ? "Saving for offline use…" : "Not saved on this device";
+      return r[url];
+    };
+    if (!(await check()) && navigator.onLine) setTimeout(check, 4000);
+  });
+
+  const usage = $("[data-offline-usage]");
+  if (usage) {
+    const fmt = (b) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.round(b / 1e3)} KB`);
+    const refreshUsage = async () => {
+      if (!sw) { usage.textContent = "Needs HTTPS"; $$("[data-save-all], [data-clear-offline]").forEach((b) => { b.disabled = true; }); return; }
+      if (navigator.storage && navigator.storage.estimate) {
+        try { usage.textContent = fmt((await navigator.storage.estimate()).usage || 0); } catch {}
+      }
+      const s = await swCall({ type: "summary" });
+      const size = $("[data-save-all-size]");
+      if (s && size) size.textContent = s.missing ? `${s.missing} · ${fmt(s.missingBytes)}` : "All saved";
+    };
+    refreshUsage();
+    const all = $("[data-save-all]");
+    if (all) all.addEventListener("click", async () => {
+      if (!navigator.onLine) return toast("You're Offline");
+      const size = $("[data-save-all-size]");
+      all.disabled = true;
+      await swCall({ type: "saveAll" }, (p) => { if (size && p) size.textContent = `${p.progress} of ${p.total}`; });
+      all.disabled = false;
+      toast("Saved for Offline");
+      refreshUsage();
+    });
+    const clr = $("[data-clear-offline]");
+    if (clr) clr.addEventListener("click", async () => {
+      if (!confirm("Remove saved manuals, receipts and 3D files from this device? Pages and photos stay.")) return;
+      await swCall({ type: "clearFiles" });
+      toast("Saved Files Removed");
+      refreshUsage();
+    });
+  }
+
+  // Logging out removes everything this account saved on the device.
+  $$('form[action="/logout"]').forEach((f) => f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const waiting = (await outbox.all()).length;
+    if (waiting && !confirm(`${waiting} edit${waiting === 1 ? " hasn't" : "s haven't"} been sent yet. Log out and discard ${waiting === 1 ? "it" : "them"}?`)) return;
+    await Promise.race([Promise.all([swCall({ type: "clear" }), outbox.clear().catch(() => {})]),
+                        new Promise((r) => setTimeout(r, 1500))]);
+    f.submit();
+  }));
 })();

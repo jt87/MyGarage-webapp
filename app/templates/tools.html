@@ -1,6 +1,7 @@
 {% extends "base.html" %}
-{% from "macros.html" import tool_row %}
+{% from "macros.html" import tool_row, icon %}
 {% set large = true %}
+{% block nav_actions %}{% if editable %}<a class="nav-btn" href="/tools/new" aria-label="New Tool">{{ icon("plus") }}</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="large-title"><h1>Tools</h1></div>
 <label class="searchbar">

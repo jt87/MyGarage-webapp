@@ -15,7 +15,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="{{ site_title }}">
-<link rel="stylesheet" href="/static/style.css?v=8">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
 </head>
 <body>
 {% set tabs = [
@@ -39,7 +39,7 @@
     <a class="side-item" href="/insurance" {% if path.startswith('/insurance') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#shield"/></svg>Insurance</a>
     <a class="side-item" href="/reference" {% if path.startswith('/reference') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#book-open"/></svg>Reference</a>
     <a class="side-item" href="/settings" {% if path.startswith('/settings') %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="/static/icons.svg#settings"/></svg>Settings</a>
-    <p class="side-foot t-footnote secondary">{% include "_sync_status.html" %}</p>
+    <p class="side-foot t-footnote secondary"><span class="offline-note" data-offline-note hidden>Offline · showing saved copy<br></span><span data-outbox-note hidden></span>{% include "_sync_status.html" %}</p>
   </aside>
 
   <div class="main-col">
@@ -53,6 +53,7 @@
       </div>
     </header>
     <main class="content">
+      <div class="offline-bar" data-offline-bar hidden><span data-offline-text>Offline. Showing the copy saved on this device.</span></div>
       {% block content %}{% endblock %}
     </main>
   </div>
@@ -68,8 +69,8 @@
 </nav>
 
 <dialog class="sheet" data-sheet aria-label="Options"></dialog>
-<div class="toast" data-toast role="status" aria-live="polite"></div>
-<script src="/static/app.js?v=8" defer></script>
+<div class="toast" data-toast role="status" aria-live="polite"{% if flash %} data-flash="{{ flash }}"{% endif %}></div>
+<script src="/static/app.js?v={{ v }}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -17,10 +17,11 @@ services:
       # is using the site, or every SYNC_INTERVAL otherwise.
       GIT_REPO_URL: https://github.com/CHANGE_ME/CHANGE_ME.git   # your data repo
       GIT_BRANCH: main
-      GIT_TOKEN: CHANGE_ME       # fine-grained GitHub token: your data repo only, Contents = Read-only (remove for a public repo)
+      GIT_TOKEN: CHANGE_ME       # fine-grained GitHub token: your data repo only, Contents = Read and write (lets you edit from the app)
       WEBHOOK_SECRET: CHANGE_ME  # same secret as the GitHub webhook (see README); instant updates
       FRESHNESS_SECONDS: "300"
       SYNC_INTERVAL: "1800"
+      # READ_ONLY: "true"       # uncomment to turn off editing from the app
       GITHUB_REPO: CHANGE_ME/CHANGE_ME   # your data repo; adds "Edit" links to GitHub; remove to hide them
       # No login settings here: like Sonarr and Radarr, MyGarage asks you to
       # create a username and password the first time you open it, and keeps

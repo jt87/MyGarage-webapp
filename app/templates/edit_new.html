@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><h1 data-title>New Tool</h1></div>
+{% include "_form_status.html" %}
+<form method="post" action="/tools/new" data-edit data-label="New tool" data-done="/tools">
+  <div class="section">
+    <div class="section-header">Name</div>
+    <div class="group">
+      <label class="row field"><span class="field-label">Brand &amp; model</span><input class="row-input" name="model_name" placeholder="Acme TS10" required autofocus></label>
+      <label class="row field"><span class="field-label">Name</span><input class="row-input" name="subtitle" placeholder="10&quot; Table Saw"></label>
+      <label class="row field"><span class="field-label">Category</span><input class="row-input" name="category" list="categories" placeholder="Table saw"></label>
+    </div>
+    <datalist id="categories">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist>
+  </div>
+  <div class="section">
+    <div class="section-header">Details</div>
+    <div class="group">
+      <label class="row field"><span class="field-label">Model #</span><input class="row-input" name="model_no" autocapitalize="characters"></label>
+      <label class="row field"><span class="field-label">Serial #</span><input class="row-input" name="serial" autocapitalize="characters"></label>
+      <label class="row field"><span class="field-label">Purchased</span><input class="row-input" name="purchased" placeholder="2026-10-12, Menards, $150"></label>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-header">Insurance</div>
+    <div class="group">
+      <label class="row field"><span class="field-label">Paid</span><input class="row-input" name="paid" inputmode="decimal" placeholder="$150"></label>
+      <label class="row field"><span class="field-label">Replacement</span><input class="row-input" name="value" inputmode="decimal" placeholder="~$300"></label>
+    </div>
+    <p class="section-footer">After saving, add photos and the receipt from the tool's page.</p>
+  </div>
+  <div class="section"><div class="group"><button class="row action center" type="submit">Add Tool</button></div></div>
+</form>
+{% endblock %}

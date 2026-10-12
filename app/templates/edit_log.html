@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><h1 data-title>Log Maintenance</h1><p class="t-subhead secondary">{{ t.model_name }}{% if t.subtitle %} · {{ t.subtitle }}{% endif %}</p></div>
+{% include "_form_status.html" %}
+<form method="post" action="{{ t.url }}/log" data-edit data-label="Log maintenance · {{ t.model_name }}" data-done="{{ t.url }}#log">
+  <div class="section">
+    <div class="group">
+      <label class="row field"><span class="field-label">Date</span><input class="row-input" type="date" name="date" value="{{ today }}" data-today required></label>
+      <label class="row field stacked"><span class="field-label">What was done</span><textarea class="row-textarea" name="what" rows="4" placeholder="Changed the blade, waxed the top…" required autofocus></textarea></label>
+    </div>
+    <p class="section-footer">Added to the Maintenance log in this tool's README.</p>
+  </div>
+  <div class="section"><div class="group"><button class="row action center" type="submit">Save</button></div></div>
+</form>
+{% endblock %}
