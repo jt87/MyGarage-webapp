@@ -156,6 +156,10 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 | `SITE_TITLE` | `MyGarage` | App name: large title, first tab, Home Screen label |
 | `REPO_PATH` / `CACHE_PATH` | `/data/repo`, `/data/cache` | Where the clone and thumbnails live |
 
+## Credits
+
+MyGarage's own code is MIT-licensed (see LICENSE). It ships three open-source libraries, each with its license next to it: [Feather](https://feathericons.com) icons (MIT, `app/static/feather-LICENSE.txt`), [PDF.js](https://github.com/mozilla/pdf.js) for the manual reader (Apache 2.0, `app/static/vendor/pdfjs/`), and [three.js](https://threejs.org) for the STL viewer (MIT, `app/static/vendor/three/`).
+
 ## Run it locally
 
 ```
