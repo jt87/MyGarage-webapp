@@ -2,7 +2,7 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
-## 1.3.0 (unreleased)
+## 1.3.0 (2026-10-16)
 
 ### Changed
 - **A new home screen built for finding a tool.** One search field at the top narrows your tools as you type, by name, model number, category, or the parts a tool takes (type "blade" to find the saw). Press Return, or tap "Search everything", to search parts, manuals, projects and reference too. Shopping, Projects and Reference are one tap away below it. The total value now sits on the Insurance row.
