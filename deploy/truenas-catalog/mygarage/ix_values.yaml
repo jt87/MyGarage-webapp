@@ -1,0 +1,19 @@
+# Image versions. The MyGarage tag follows its releases (see RELEASING.md);
+# container-utils is TrueNAS's helper image for fixing file ownership.
+images:
+  image:
+    repository: ghcr.io/jt87/mygarage
+    tag: "1.1.0"
+  container_utils_image:
+    repository: ixsystems/container-utils
+    tag: "1.0.2@sha256:46eba20714c1cc6784f60e245c32c33a2d9f616e47d804694a9854248c89a992"
+
+consts:
+  mygarage_container_name: mygarage
+  perms_container_name: permissions
+  data_path: /data
+  # Everything MyGarage keeps, under the one data mount.
+  paths:
+    REPO_PATH: /data/repo
+    CACHE_PATH: /data/cache
+    CONFIG_PATH: /data/config/auth.json

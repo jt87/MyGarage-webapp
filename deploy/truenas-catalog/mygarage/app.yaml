@@ -1,0 +1,44 @@
+annotations:
+  min_scale_version: 24.10.2.2
+app_version: 1.1.0
+capabilities: []
+categories:
+- productivity
+changelog_url: https://github.com/jt87/MyGarage-webapp/blob/main/CHANGELOG.md
+date_added: '2026-10-12'
+description: MyGarage keeps your tools, manuals, receipts, parts and projects in one
+  place, works offline on your phone, and stores everything as Markdown with full
+  history.
+home: https://github.com/jt87/MyGarage-webapp
+host_mounts: []
+icon: https://media.sys.truenas.net/apps/mygarage/icons/icon.png
+keywords:
+- garage
+- tools
+- inventory
+- maintenance
+- workshop
+lib_version: 2.3.15
+lib_version_hash: 418b1697e018a564438ced4d735f4ced3ea16cc9fa74971a6040e769c80a66e5
+maintainers:
+- email: dev@truenas.com
+  name: truenas
+  url: https://www.truenas.com/
+name: mygarage
+run_as_context:
+- description: Container [mygarage] can run as any non-root user and group.
+  gid: 568
+  group_name: Host group is [apps]
+  uid: 568
+  user_name: Host user is [apps]
+screenshots:
+- https://media.sys.truenas.net/apps/mygarage/screenshots/screenshot1.png
+- https://media.sys.truenas.net/apps/mygarage/screenshots/screenshot2.png
+- https://media.sys.truenas.net/apps/mygarage/screenshots/screenshot3.png
+sources:
+- https://apps.truenas.com/catalog/mygarage_community/
+- https://github.com/jt87/MyGarage-webapp
+- https://github.com/jt87/MyGarage-webapp/pkgs/container/mygarage
+title: MyGarage
+train: community
+version: 1.0.0

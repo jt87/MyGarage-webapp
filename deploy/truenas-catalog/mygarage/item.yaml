@@ -1,0 +1,13 @@
+categories:
+- productivity
+icon_url: https://media.sys.truenas.net/apps/mygarage/icons/icon.png
+screenshots:
+- https://media.sys.truenas.net/apps/mygarage/screenshots/screenshot1.png
+- https://media.sys.truenas.net/apps/mygarage/screenshots/screenshot2.png
+- https://media.sys.truenas.net/apps/mygarage/screenshots/screenshot3.png
+tags:
+- garage
+- tools
+- inventory
+- maintenance
+- workshop

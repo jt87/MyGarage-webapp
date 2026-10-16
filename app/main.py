@@ -33,7 +33,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import auth, edit, repo, storage
+from . import __version__, auth, edit, repo, storage
 from .sync import FolderNotEmpty, RepoSync, Watcher, WriteError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -106,6 +106,7 @@ STATIC_VERSION = static_version()
 env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
                    github_repo="", branch=sync.branch, auth=auth_cfg, store=store,
                    METHODS=auth.METHODS, REQUIRED=auth.REQUIRED, v=STATIC_VERSION,
+                   app_version=__version__,
                    editable=not READ_ONLY, max_upload_mb=MAX_UPLOAD_MB)
 env.filters["q"] = lambda s: quote(str(s))
 
@@ -789,6 +790,7 @@ async def do_sync(request: Request):
 
 def status() -> dict:
     return {
+        "version": __version__,
         "mode": sync.mode or "setup",
         "backup_error": sync.backup_error or None,
         "head": sync.head[:7],

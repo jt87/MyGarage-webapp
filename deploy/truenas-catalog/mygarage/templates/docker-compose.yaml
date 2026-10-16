@@ -1,0 +1,36 @@
+{#- MyGarage: one container. All of its state lives under /data. -#}
+{%- set c = values.consts -%}
+{%- set port = values.network.web_port -%}
+{%- set owner = {"uid": values.run_as.user, "gid": values.run_as.group, "mode": "check"} -%}
+
+{%- set app = ix_lib.base.render.Render(values) -%}
+{%- set garage = app.add_container(c.mygarage_container_name, "image") -%}
+{%- set fix_owner = app.deps.perms(c.perms_container_name) -%}
+
+{#- The app reads its port and paths from the environment (see the Dockerfile). -#}
+{%- do garage.set_user(values.run_as.user, values.run_as.group) -%}
+{%- do garage.environment.add_env("PORT", port.port_number) -%}
+{%- for name, path in c.paths.items() -%}
+  {%- do garage.environment.add_env(name, path) -%}
+{%- endfor -%}
+{%- do garage.environment.add_user_envs(values.mygarage.additional_envs) -%}
+
+{#- /healthz answers 200 as soon as the app can serve, before first-run setup too. -#}
+{%- do garage.healthcheck.set_test("http", {"port": port.port_number, "path": "/healthz"}) -%}
+{%- do garage.add_port(port) -%}
+
+{%- do garage.add_storage(c.data_path, values.storage.data) -%}
+{%- do fix_owner.add_or_skip_action("data", values.storage.data, owner) -%}
+{%- for extra in values.storage.additional_storage -%}
+  {%- do garage.add_storage(extra.mount_path, extra) -%}
+  {%- do fix_owner.add_or_skip_action(extra.mount_path, extra, owner) -%}
+{%- endfor -%}
+
+{#- Only run the ownership fixer when a mount actually needs it. -#}
+{%- if fix_owner.has_actions() -%}
+  {%- do fix_owner.activate() -%}
+  {%- do garage.depends.add_dependency(c.perms_container_name, "service_completed_successfully") -%}
+{%- endif -%}
+
+{%- do app.portals.add(port) -%}
+{{ app.render() | tojson }}
