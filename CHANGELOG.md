@@ -5,14 +5,14 @@ Versions follow [semantic versioning](https://semver.org): a patch release (1.1.
 ## 1.2.0 (2026-10-16)
 
 ### Added
-- **Overnight upgrades.** A TrueNAS Cron Job installs new 1.x releases at 3 AM, checks the new version starts, and puts the previous one back if it doesn't. See "Automatic upgrades" in the README.
-- **Settings → About** shows the version, when it was installed, whether an update is available, and how the last overnight upgrade went. What's New has the notes for every version, and works offline.
-- After an upgrade, a banner says what version you're on, with a link to What's New.
-- When a release that needs something from you (2.0) comes out, a notice says what to do. It never installs on its own.
-- The image is also tagged with its major version (`ghcr.io/jt87/mygarage:1`), for following releases safely.
+- **One-click updates.** The install YAML now follows `ghcr.io/jt87/mygarage:1`, so a new release is one click: open the app in TrueNAS Apps and choose Update. No reinstalling.
+- When a new version is out, a banner says so and how to update.
+- **Settings → About** shows the version, when it was installed, and whether an update is available. What's New has the notes for every version, and works offline.
+- After an update, a banner says what version you're on, with a link to What's New.
+- When a release that needs something from you (2.0) comes out, a notice says what to do. `:1` never picks it up on its own.
 
 ### Upgrading from 1.1
-- Nothing is required. To get overnight upgrades, change the image to `ghcr.io/jt87/mygarage:1` and add the Cron Job.
+- Change the image to `ghcr.io/jt87/mygarage:1` once (Apps → mygarage → Edit). After that, every update is Apps → mygarage → Update.
 
 ## 1.1.0 (2026-10-16)
 

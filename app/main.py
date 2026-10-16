@@ -170,6 +170,7 @@ def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLRes
     versions.maybe_check()
     ctx.setdefault("whats_new", not versions.data.get("whats_new_seen", True))
     ctx.setdefault("major_popup", versions.major_popup())
+    ctx.setdefault("update_banner", versions.update_banner())
     return HTMLResponse(env.get_template(template).render(**ctx), status_code=status,
                         headers={"Cache-Control": "no-cache"})
 
@@ -1184,13 +1185,15 @@ async def settings_about(request: Request):
 
 
 async def settings_updates(request: Request):
-    """Dismiss the "Updated" banner or the new-major-version notice."""
+    """Dismiss the "Updated" or "available" banner, or the new-major-version notice."""
     form = await request.form()
     action = form.get("action")
     if action == "seen":
         versions.mark_whats_new_seen()
     elif action == "dismiss_major":
         versions.dismiss_major(str(form.get("version", "")))
+    elif action == "dismiss_update":
+        versions.dismiss_update(str(form.get("version", "")))
     if "application/json" in request.headers.get("accept", ""):
         return JSONResponse({"ok": True})
     return RedirectResponse(safe_next(str(form.get("next", ""))), status_code=303)

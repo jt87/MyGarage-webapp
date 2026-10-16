@@ -1,12 +1,14 @@
 """Versions: what's installed, what changed, and what's available.
 
-Three small JSON files, each with one writer:
+Two small JSON files:
 
-  config/version.json       this app: the installed version, when it changed,
-                            and which notices have been dismissed
-  config/auto-upgrade.json  deploy/auto-upgrade.sh, through `python -m
-                            app.releases record` (the nightly TrueNAS Cron Job)
-  cache/releases.json       this app: GitHub's release list, checked once a day
+  config/version.json   the installed version, when it changed, and which
+                        notices have been dismissed
+  cache/releases.json   GitHub's release list, checked once a day
+
+The app never updates itself: it says when a release is out, and the update
+is one click in TrueNAS (Apps → the app → Update), as long as the image
+follows a moving tag like ghcr.io/jt87/mygarage:1.
 
 Release notes for installed versions come from the CHANGELOG.md bundled in
 the image, so they work offline. Newer releases come from GitHub.
@@ -14,16 +16,13 @@ the image, so they work offline. Newer releases come from GitHub.
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
-import os
 import re
-import sys
 import threading
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__
@@ -37,8 +36,6 @@ RELEASES_PAGE = "https://github.com/jt87/MyGarage-webapp/releases"
 RELEASES_API = "https://api.github.com/repos/jt87/MyGarage-webapp/releases?per_page=30"
 CHECK_EVERY = 24 * 3600
 RETRY_AFTER = 3600
-# The Cron Job runs nightly; after this long without a word it's reported as not running.
-AUTO_STALE = timedelta(days=3)
 
 
 def parse(version: str) -> tuple[int, int, int] | None:
@@ -123,15 +120,10 @@ def fetch_github(url: str = RELEASES_API) -> list[Release]:
     return out
 
 
-def auto_path(config_dir: Path) -> Path:
-    return config_dir / "auto-upgrade.json"
-
-
 class Versions:
     def __init__(self, config_dir: Path, cache_dir: Path, current: str = __version__,
                  fetch=fetch_github, check: bool = True, changelog_path: Path = CHANGELOG):
         self.path = config_dir / "version.json"
-        self.auto_file = auto_path(config_dir)
         self.cache = cache_dir / "releases.json"
         self.current = current
         self.fetch = fetch
@@ -144,7 +136,7 @@ class Versions:
     # ------------------------------------------------------------------ installed version
 
     def startup(self, existing_install: bool) -> None:
-        """Notice a new version (an upgrade, overnight or by hand) and remember it."""
+        """Notice a new version (the app was updated) and remember it."""
         before = self.data.get("current")
         if before == self.current:
             return
@@ -178,30 +170,15 @@ class Versions:
             self._save()
 
     def dismiss_major(self, version: str) -> None:
+        self._dismiss("dismissed_major", version)
+
+    def dismiss_update(self, version: str) -> None:
+        self._dismiss("dismissed_update", version)
+
+    def _dismiss(self, key: str, version: str) -> None:
         if parse(version):
-            self.data["dismissed_major"] = version
+            self.data[key] = version
             self._save()
-
-    # ------------------------------------------------------------------ automatic upgrades
-
-    def auto(self) -> dict:
-        """The Cron Job's last report, with `state`: off, stale, ok, failed, pinned or blocked."""
-        rec = _read(self.auto_file)
-        at = _time(rec.get("at"))
-        if not at:
-            return {"state": "off"}
-        rec["at"] = at
-        if now() - at > AUTO_STALE:
-            rec["state"] = "stale"
-        else:
-            rec["state"] = {"rolled_back": "failed", "pinned": "pinned",
-                            "major": "blocked"}.get(rec.get("result"), "ok")
-        return rec
-
-    @property
-    def upgraded_overnight(self) -> bool:
-        rec = _read(self.auto_file)
-        return rec.get("result") == "upgraded" and rec.get("to") == self.current
 
     # ------------------------------------------------------------------ release notes
 
@@ -230,6 +207,11 @@ class Versions:
         """A newer major version not yet dismissed: shown once, on every device."""
         r = self.major_update()
         return r if r and r.version != self.data.get("dismissed_major") else None
+
+    def update_banner(self) -> Release | None:
+        """A newer release of this major version, until dismissed (a later one shows again)."""
+        r = self.same_major_update()
+        return r if r and r.version != self.data.get("dismissed_update") else None
 
     @property
     def last_check(self) -> dict:
@@ -272,33 +254,3 @@ class Versions:
         finally:
             with self._lock:
                 self._checking = False
-
-
-# ---------------------------------------------------------------------- CLI (for the Cron Job)
-
-def record(config_dir: Path, result: str, frm: str = "", to: str = "", detail: str = "") -> None:
-    _write(auto_path(config_dir), {"at": now().isoformat(), "result": result,
-                                   "from": frm, "to": to, "detail": detail[:300]})
-
-
-def main(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="python -m app.releases")
-    sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("version", help="print the installed version")
-    r = sub.add_parser("record", help="record the result of an automatic upgrade check")
-    r.add_argument("--result", required=True,
-                   choices=["current", "upgraded", "rolled_back", "pinned", "major"])
-    r.add_argument("--from", dest="frm", default="")
-    r.add_argument("--to", default="")
-    r.add_argument("--detail", default="")
-    args = p.parse_args(argv)
-    if args.cmd == "version":
-        print(__version__)
-        return 0
-    config_dir = Path(os.environ.get("CONFIG_PATH", "/data/config/auth.json")).parent
-    record(config_dir, args.result, args.frm, args.to, args.detail)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

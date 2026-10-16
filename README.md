@@ -57,29 +57,15 @@ You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docke
 
 That's it. Add it to your iPhone's Home Screen (Share → Add to Home Screen), and see [Put it on your domain](#put-it-on-your-domain) to use it away from home and offline.
 
-To update the app later, open it in Apps and choose Update (or Pull Image, then restart), or let it upgrade itself overnight:
+### Updating
 
-### Automatic upgrades
+When a new version is out, the app shows a banner. To update, open the app in TrueNAS **Apps** and choose **Update**. TrueNAS downloads the new version and restarts the app; your garage, login and settings stay as they are. There's nothing to reinstall.
 
-A TrueNAS Cron Job can install new releases at 3 AM. It only installs releases with the same first number (1.2, 1.3, …), which never need anything from you. A release that does (2.0) is never installed on its own; the app shows a notice with what to do instead. If a new version doesn't start, the previous one is put back and that version is skipped until the next release. Settings → About shows the last run.
+This works because the image in the YAML follows `ghcr.io/jt87/mygarage:1`, which always points at the newest 1.x release. If you installed with an older YAML, change the image to that once (Apps → mygarage → Edit). An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, never changes, so Update has nothing to bring in.
 
-1. **Follow the major version.** Apps → mygarage → Edit, and change the image to `ghcr.io/jt87/mygarage:1`. An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, is never changed.
-2. **Save the script on a pool.** In System → Shell:
-   ```
-   mkdir -p /mnt/tank/scripts
-   curl -fsSL -o /mnt/tank/scripts/mygarage-auto-upgrade.sh https://raw.githubusercontent.com/jt87/MyGarage-webapp/main/deploy/auto-upgrade.sh
-   chmod 700 /mnt/tank/scripts/mygarage-auto-upgrade.sh
-   ```
-   Use your own pool name instead of `tank`. Read [the script](deploy/auto-upgrade.sh) first if you like; it's short.
-3. **Add the Cron Job.** System → Advanced Settings → Cron Jobs → Add:
-   - Description: `MyGarage upgrade`
-   - Command: `/mnt/tank/scripts/mygarage-auto-upgrade.sh mygarage` (the last word is the app's name in Apps)
-   - Run As User: `root`
-   - Schedule: Custom, `0 3 * * *` (3:00 AM daily)
-   - Tick **Hide Standard Output** and leave Hide Standard Error unticked, so TrueNAS only emails you when something went wrong.
-4. To try it now, choose **Run Now** on the Cron Job, then look at Settings → About.
+A release with a new first number (2.0) may need a step from you, such as moving a folder. It's never picked up by `:1`. The app shows a notice with the steps and the new image to use.
 
-The app checks GitHub's release list once a day to show what's new and what's available (set `UPDATE_CHECK=false` to stop it). It never installs anything itself, since that would mean giving it control of TrueNAS.
+Settings → About shows your version and whether an update is available, and What's New has the notes for every version. The app checks GitHub's release list once a day for this; set `UPDATE_CHECK=false` to stop it. It never installs anything itself.
 
 ### Using GitHub
 
