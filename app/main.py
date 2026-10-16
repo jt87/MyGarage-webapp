@@ -34,7 +34,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import __version__, auth, edit, repo, storage
-from .sync import RepoSync, Watcher, WriteError
+from .sync import FolderNotEmpty, RepoSync, Watcher, WriteError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -117,6 +117,11 @@ def apply_storage() -> None:
     env.globals.update(github_repo=GITHUB_REPO_ENV or storage.github_slug(store.url),
                        branch=sync.branch)
     inventory.invalidate()
+
+
+async def reapply_storage() -> None:
+    """apply_storage from a request: off the event loop, since it may wait for the sync lock."""
+    await anyio.to_thread.run_sync(apply_storage)
 
 
 env.globals.update(github_repo=GITHUB_REPO_ENV or storage.github_slug(store.url))
@@ -616,7 +621,7 @@ async def tool_new(request: Request):
     def mutate(root: Path) -> list[str]:
         base_slug = edit.slugify(f["model_name"]) or "tool"
         slug, n = base_slug, 2
-        while (root / "tools" / slug).exists():
+        while (root / "tools" / slug).exists() or slug in edit.RESERVED_SLUGS:
             slug, n = f"{base_slug}-{n}", n + 1
         created["slug"] = slug
         specs = [("Category", f["category"]), ("Model #", f["model_no"]), ("Serial #", f["serial"]),
@@ -902,17 +907,37 @@ async def setup(request: Request):
 
 # --------------------------------------------------------------------------- storage setup
 
+setup_lock = anyio.Lock()  # one first-run setup at a time (a double tap, a second tab)
+
+
 async def setup_storage(request: Request):
     """First run, step 2: where the garage data lives."""
     if sync.configured:
         return RedirectResponse("/", status_code=303)
     ctx = {"where": "server", "starter": "empty", "repo": "", "branch": "main", "error": ""}
     if request.method == "GET":
-        return plain_page(request, "setup_storage.html", **ctx)
+        return plain_page(request, "setup_storage.html", **{**ctx, "error": setup_error})
+    async with setup_lock:
+        if sync.configured:  # the other request finished setting up
+            return RedirectResponse("/", status_code=303)
+        return await run_setup(request, ctx)
+
+
+async def run_setup(request: Request, ctx: dict) -> Response:
+    global setup_error
+    setup_error = ""
     form = await request.form()
     ctx.update({k: str(form.get(k, ctx[k])).strip() for k in ("where", "starter", "repo", "branch")})
     starter = storage.STARTERS / ("sample" if ctx["starter"] == "sample" else "empty")
     token, branch = str(form.get("token", "")).strip(), ctx["branch"] or "main"
+    was_empty = not folder_has_files()
+    stray = [p for p in REPO_PATH.iterdir() if p.name != "lost+found" and not p.name.startswith(".")] \
+        if REPO_PATH.exists() else []
+    if ctx["where"] != "github" and stray and not (REPO_PATH / "README.md").exists():
+        # Something's there, but not a garage: don't mix a starter garage into it.
+        return plain_page(request, "setup_storage.html", status=400, **{**ctx, "error": (
+            f"The data folder ({REPO_PATH}) has files but no garage in it. Empty it to "
+            "start a new garage, or put your garage's files there first.")})
     try:
         if ctx["where"] == "github":
             msg = await connect_github_source(ctx["repo"], token, branch, starter)
@@ -920,17 +945,60 @@ async def setup_storage(request: Request):
             msg = await connect_server_with_backup(ctx["repo"], token, branch, starter)
         else:
             store.set(mode="server", url="", token="", branch=sync.branch)
-            apply_storage()
+            await reapply_storage()
             await anyio.to_thread.run_sync(sync.init_local, starter)
             msg = "Your garage is ready"
-    except WriteError as e:
-        return plain_page(request, "setup_storage.html", status=400, **{**ctx, "error": str(e)})
+    except Exception as e:
+        # Whatever failed, go back to "not set up" so the screen can be tried again,
+        # emptying the folder only if setup started with it empty.
+        error = str(e) if isinstance(e, WriteError) else f"Couldn't set up the garage: {e}"
+        if not isinstance(e, WriteError):
+            logging.getLogger("garage").exception("first-run setup failed")
+        error += await anyio.to_thread.run_sync(reset_setup, was_empty)
+        return plain_page(request, "setup_storage.html", status=400, **{**ctx, "error": error})
     inventory.invalidate()
     return RedirectResponse(with_query("/", "msg", msg), status_code=303)
 
 
 def folder_has_files() -> bool:
     return REPO_PATH.exists() and any(REPO_PATH.iterdir())
+
+
+setup_error = ""  # why a setup finishing in the background failed, for the setup screen
+
+
+def reset_setup(empty_folder: bool) -> str:
+    """Back to "not set up" after a failed setup. Returns anything that also
+    went wrong doing that, to add to the error shown."""
+    problems = ""
+    try:
+        sync.reset_unconfigured(empty_folder)
+    except Exception as e:
+        logging.getLogger("garage").error("couldn't empty the data folder: %s", e)
+        problems += f" The data folder couldn't be emptied afterwards ({e}); empty {REPO_PATH} and try again."
+    try:
+        # needs_setup keeps the setup screen reachable even if files were left behind.
+        store.set(mode="", url="", token="", needs_setup=True)
+        apply_storage()
+    except OSError as e:
+        # Leave sync "not set up" (reset_unconfigured did that) rather than
+        # re-applying the old saved mode to what may now be an empty folder.
+        logging.getLogger("garage").error("couldn't reset the storage setting: %s", e)
+        problems += f" The storage setting couldn't be saved either ({e})."
+    return problems
+
+
+def clone_or_reset() -> None:
+    """Bring an existing GitHub garage here; if that fails, back to the setup
+    screen (nothing retries a half-made server copy by itself)."""
+    global setup_error
+    try:
+        sync.clone_full()
+    except Exception as e:
+        setup_error = f"Couldn't bring the garage over from GitHub: {e}"
+        logging.getLogger("garage").warning(setup_error)
+        # Files that appeared in the folder meanwhile aren't ours to delete.
+        setup_error += reset_setup(empty_folder=not isinstance(e, FolderNotEmpty))
 
 
 def in_background(name: str, fn) -> None:
@@ -958,11 +1026,11 @@ async def connect_server_with_backup(repo_text: str, token: str, branch: str, st
             raise WriteError(f"The data folder ({REPO_PATH}) already has files. Empty it to "
                              "bring in the GitHub garage, or choose On This Server to keep them.")
         store.set(mode="server", url=url, token=token, branch=branch)
-        apply_storage()
-        in_background("first-clone", sync.clone_full)
+        await reapply_storage()
+        in_background("first-clone", clone_or_reset)
         return "Bringing your garage over from GitHub"
     store.set(mode="server", url=url, token=token, branch=branch)
-    apply_storage()
+    await reapply_storage()
     await anyio.to_thread.run_sync(sync.init_local, starter)
     await anyio.to_thread.run_sync(sync.sync_backup)
     return "Your garage is ready and backed up to GitHub"
@@ -973,15 +1041,17 @@ async def connect_github_source(repo_text: str, token: str, branch: str, starter
     if not url:
         raise WriteError("Enter the GitHub repo, like owner/my-garage.")
     tip = await anyio.to_thread.run_sync(sync.check_remote, url, token, branch)
-    if folder_has_files() and not (REPO_PATH / ".git").exists():
+    # GitHub as the primary copy starts from an empty folder: never commit into,
+    # or reset, files (or a git checkout) that are already there.
+    if folder_has_files():
         raise WriteError(f"The data folder ({REPO_PATH}) already has files. Empty it to use "
                          "GitHub, or choose On This Server to keep them.")
     if not tip:
         # An empty repo: start it here and send it up.
         sync.configure("server", url, token, branch)
-        await anyio.to_thread.run_sync(sync.seed_remote, starter)
+        await anyio.to_thread.run_sync(sync.seed_remote, starter)  # run_setup undoes a failure
     store.set(mode="github", url=url, token=token, branch=branch)
-    apply_storage()
+    await reapply_storage()
     if not tip:
         return "Your garage is ready and saved to GitHub"
     in_background("first-clone", sync.sync_once)
@@ -994,13 +1064,16 @@ async def settings_storage(request: Request):
     action = str(form.get("action", ""))
     if store.env_locked:
         return back_to_settings(error="Storage is set in the app's YAML (GIT_REPO_URL).")
-    if action == "disconnect" and sync.mode == "server":
-        store.set(url="", token="")
-        apply_storage()
-        return back_to_settings(msg="GitHub backup disconnected. Nothing was deleted on GitHub.")
     if not await anyio.to_thread.run_sync(auth_cfg.check, auth_cfg.username,
                                           str(form.get("current", ""))):
         return back_to_settings(error="Your current password is incorrect.")
+    if action == "disconnect" and sync.mode == "server":
+        try:
+            store.set(url="", token="")
+        except OSError as e:
+            return back_to_settings(error=f"Couldn't save the setting ({e}).")
+        await reapply_storage()
+        return back_to_settings(msg="GitHub backup disconnected. Nothing was deleted on GitHub.")
     token = str(form.get("token", "")).strip()
     try:
         if action in ("connect", "primary_github") and sync.mode == "server" and not sync.url:
@@ -1010,7 +1083,7 @@ async def settings_storage(request: Request):
                 return back_to_settings(error="Enter the GitHub repo, like owner/my-garage.")
             await anyio.to_thread.run_sync(sync.check_remote, url, token, sync.branch)
             store.set(url=url, token=token)
-            apply_storage()
+            await reapply_storage()
             await anyio.to_thread.run_sync(sync.sync_backup)
             inventory.invalidate()
             if sync.backup_error:
@@ -1020,29 +1093,35 @@ async def settings_storage(request: Request):
         if action == "primary_github" and sync.mode == "server":
             await anyio.to_thread.run_sync(sync.make_github_primary)
             store.set(mode="github")
-            apply_storage()
+            await reapply_storage()
             return back_to_settings(msg="GitHub is now the primary copy. This server keeps a copy "
                                         "of it, and edits made here are saved to GitHub.")
         if action == "primary_server" and sync.mode == "github":
             await anyio.to_thread.run_sync(sync.make_server_primary)
             store.set(mode="server")
-            apply_storage()
+            await reapply_storage()
             return back_to_settings(msg="This server is now the primary copy, with its full "
                                         "history. GitHub stays connected as the backup.")
         if action == "history" and sync.mode == "folder":
-            store.set(mode="server", url="", token="")
-            apply_storage()
-            await anyio.to_thread.run_sync(sync.init_local, None)
+            try:
+                await anyio.to_thread.run_sync(sync.init_local, None)
+            except RuntimeError as e:
+                return back_to_settings(error=f"Couldn't start the history: {e}")
+            store.set(mode="server", url="", token="")  # only once the repo is ready
+            await reapply_storage()
             inventory.invalidate()
             return back_to_settings(msg="This server now keeps a history of every change.")
         if action == "token" and sync.remote:
             await anyio.to_thread.run_sync(sync.check_remote, store.url, token, sync.branch)
             store.set(token=token)
-            apply_storage()
+            await reapply_storage()
             return back_to_settings(msg="Token updated.")
     except WriteError as e:
-        apply_storage()  # whatever happened, run with what's saved
+        await reapply_storage()  # whatever happened, run with what's saved
         return back_to_settings(error=str(e))
+    except OSError as e:
+        await reapply_storage()
+        return back_to_settings(error=f"Couldn't save the setting ({e}). Check that MyGarage can write to its config folder.")
     return back_to_settings(error="That change isn't available for this storage.")
 
 

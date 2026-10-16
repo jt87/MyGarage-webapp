@@ -69,6 +69,7 @@ def test_backup_sends_everything_and_takes_github_edits(tmp_path, empty_remote):
     s.sync_backup()  # first connection: the whole history goes up
     assert git("rev-parse", "main", cwd=empty_remote) == s.head and not s.backup_error
     s.write(log_mutate("example-ts10", "2026-01-01", "Waxed"), "Log")
+    s.wait_for_backup()  # the push runs after the save returns
     assert git("rev-parse", "main", cwd=empty_remote) == s.head  # each edit is pushed
 
     # An edit on GitHub comes in...
@@ -81,6 +82,7 @@ def test_backup_sends_everything_and_takes_github_edits(tmp_path, empty_remote):
         if (tmp_path / "b").mkdir() is None else None
     s.url = "file:///nonexistent"  # GitHub unreachable: the edit still saves here
     assert s.write(log_mutate("example-ts10", "2026-02-02", "Belt"), "Log 2")
+    s.wait_for_backup()  # the push runs after the save returns
     assert s.backup_error
     s.url = f"file://{empty_remote}"
     assert s.sync_backup() and not s.backup_error
@@ -100,6 +102,7 @@ def test_backup_pauses_on_a_real_conflict_and_keeps_this_server(tmp_path, empty_
         p.write_text(p.read_text().replace("waxed the top.", "waxed (server)."))
         return ["tools/example-ts10/README.md"]
     s.write(server_edit, "Server edit")
+    s.wait_for_backup()  # the push runs after the save returns
     s.url = f"file://{empty_remote}"
     assert not s.sync_backup()
     assert "both changed" in s.backup_error
@@ -221,11 +224,13 @@ def test_switch_github_to_server_and_back(tmp_path, remote):
     assert s.mode == "server" and not (tmp_path / "data/.git/shallow").exists()
     assert git("rev-list", "--count", "HEAD", cwd=tmp_path / "data") == "2"  # full history
     s.write(log_mutate("acme-ts10", "2027-04-04", "From server mode"), "s1")
+    s.wait_for_backup()  # the push runs after the save returns
     assert git("rev-parse", "main", cwd=remote) == s.head  # still backed up
 
     # GitHub unreachable: switching back refuses rather than losing anything.
     s.url = "file:///nonexistent"
     s.write(log_mutate("acme-ts10", "2027-05-05", "Offline edit"), "s2")
+    s.wait_for_backup()  # the push runs after the save returns
     with pytest.raises(WriteError):
         s.make_github_primary()
     assert s.mode == "server"

@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -66,11 +67,51 @@ def friendly_git_error(msg: str) -> str:
                 "Contents: Read and write access to your data repo.")
     if "protected branch" in low or "gh006" in low:
         return "GitHub refused the change because the branch is protected."
+    if "shallow update not allowed" in low:
+        return ("This copy only has GitHub's latest version, so it can be backed up to the "
+                "repo it came from, but not to a new one.")
     if "large" in low and ("file" in low or "gh001" in low):
         return "GitHub refused the change because a file is too large (100 MB limit)."
     if is_network_error(msg):
         return "Can't reach GitHub right now."
     return f"Couldn't save to GitHub: {msg}"
+
+
+NETWORK_COMMANDS = {"fetch", "push", "ls-remote", "clone"}
+
+
+def _run(cmd, cwd, env, timeout):
+    """subprocess.run, but a timeout stops git's helper processes too (a push
+    runs in git-remote-https and pack-objects), so nothing keeps pushing after
+    the app has given up on it."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, start_new_session=True)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        p.communicate()
+        raise
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
+class FolderNotEmpty(Exception):
+    """The data folder already has files, so it wasn't touched."""
+
+
+
+def _subcommand(args) -> str:
+    """The git subcommand in an argument list, skipping `-c key=value` options."""
+    it = iter(args)
+    for a in it:
+        if a == "-c":
+            next(it, None)
+        elif not a.startswith("-"):
+            return a
+    return "git"
 
 
 def _today() -> str:
@@ -105,6 +146,11 @@ class RepoSync:
         self._day = ""
         self._lock = threading.Lock()
         self._wake = threading.Event()
+        self._backup_pending = False                # a backup push is queued
+        self._backup_thread: threading.Thread | None = None
+        self._recheck = False                       # a backup push was rejected
+        self._history_tried_at = 0.0                # last attempt to fetch more history
+        self.depth = 1                              # GitHub mode: commits of history kept
         self._load_state()
 
     @property
@@ -156,6 +202,7 @@ class RepoSync:
                 self.last_checked = datetime.fromtimestamp(self._checked_at, timezone.utc)
             if s.get("changed_at"):
                 self.last_changed = datetime.fromisoformat(s["changed_at"])
+            self.depth = max(1, int(s.get("depth") or 1))
             if s.get("day") == _today():
                 self._day = s["day"]
                 self.checks_today = int(s.get("checks", 0))
@@ -173,6 +220,7 @@ class RepoSync:
                 "head": self.head, "checked_at": self._checked_at,
                 "changed_at": self.last_changed.isoformat() if self.last_changed else None,
                 "day": self._day, "checks": self.checks_today, "fetches": self.fetches_today,
+                "depth": self.depth,
             }))
             tmp.replace(self.state_file)
         except OSError as e:
@@ -201,8 +249,17 @@ class RepoSync:
         env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "HOME": os.environ.get("HOME", "/tmp"),
                "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory",
                "GIT_CONFIG_VALUE_0": "*"}
-        res = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True,
-                             timeout=timeout)
+        try:
+            res = _run(cmd, cwd=cwd, env=env, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            # Callers handle RuntimeError. Only commands that talk to GitHub count
+            # as network trouble; a slow local command is reported as itself.
+            sub = _subcommand(args)
+            err = RuntimeError(f"git {sub} timed out")
+            err.timed_out = True
+            err.detail = (f"git {sub}: operation timed out after {timeout}s"
+                          if sub in NETWORK_COMMANDS else f"git {sub} took longer than {timeout}s")
+            raise err from e
         if want_code and (res.returncode == 0 or res.returncode in ok):
             return res.returncode
         if res.returncode in ok and res.returncode != 0:
@@ -218,6 +275,23 @@ class RepoSync:
             raise err
         return res.stdout.strip()
 
+    def _depth_args(self, want: int) -> list[str]:
+        """--depth for a fetch into the GitHub-mode copy.
+
+        The copy keeps a fixed number of commits (self.depth: 1, or more once
+        History or Undo has needed them), so fetches neither cut history back
+        nor creep toward all of it, and pointing the app at a different repo
+        downloads only that much of it. A clone that already has everything
+        (after switching back from this server) stays complete. Call
+        _fetched(want) once the fetch has worked.
+        """
+        if not (self.path / ".git" / "shallow").exists():
+            return []
+        return ["--depth", str(max(self.depth, want))]
+
+    def _fetched(self, want: int) -> None:
+        self.depth = max(self.depth, want)
+
     def sync_once(self) -> bool:
         """Clone or fetch the branch tip. Returns True if HEAD changed."""
         if not self.git_mode:
@@ -231,10 +305,11 @@ class RepoSync:
                     log.info("cloning %s (%s)", self.url, self.branch)
                     self._git("clone", "--depth", "1", "--branch", self.branch, self.url,
                               str(self.path))
+                    self.depth = 1  # a new copy: history is fetched again when needed
                 else:
                     # Fetch from GIT_REPO_URL, not the clone's "origin", so
                     # pointing the app at a different repo takes effect.
-                    self._git("fetch", "--depth", "1", self.url, self.branch, cwd=self.path)
+                    self._git("fetch", *self._depth_args(1), self.url, self.branch, cwd=self.path)
                     self._git("reset", "--hard", "FETCH_HEAD", cwd=self.path)
                     self._git("clean", "-fdq", cwd=self.path)
                 self._count("fetch")
@@ -278,8 +353,7 @@ class RepoSync:
             self._count("check")
             remote = ""
             try:
-                out = self._git("ls-remote", self.url, f"refs/heads/{self.branch}", timeout=10)
-                remote = out.split()[0] if out else ""
+                remote = self._remote_tip(timeout=10)
                 self.last_checked = datetime.now(timezone.utc)
                 if self.git_mode:
                     self.last_error = "" if remote else f"branch {self.branch} not found on GitHub"
@@ -320,7 +394,9 @@ class RepoSync:
                 return self._write_local(mutate, message, author)
             for attempt in range(3):
                 try:
-                    self._git("fetch", "--depth", str(depth), self.url, self.branch, cwd=self.path)
+                    self._git("fetch", *self._depth_args(depth), self.url, self.branch,
+                              cwd=self.path)
+                    self._fetched(depth)
                     self._count("fetch")
                     self._git("reset", "--hard", "FETCH_HEAD", cwd=self.path)
                     self._git("clean", "-fdq", cwd=self.path)
@@ -332,15 +408,21 @@ class RepoSync:
                                      retry="403" not in detail and "401" not in detail) from e
                 try:
                     paths = mutate(self.path)
-                    if not paths:
+                    if not paths or not self._commit(paths, message, author):
                         return False
-                    self._git("add", "-A", "--", *paths, cwd=self.path)
-                    if not self._git("status", "--porcelain", "--", *paths, cwd=self.path):
-                        return False
-                    self._git("-c", f"user.name={author}", "-c", f"user.email={COMMIT_EMAIL}",
-                              "commit", "-q", "-m", message, cwd=self.path)
-                    self._git("push", "-q", self.url, f"HEAD:refs/heads/{self.branch}",
-                              cwd=self.path, timeout=300)
+                    try:
+                        self._git("push", "-q", self.url, f"HEAD:refs/heads/{self.branch}",
+                                  cwd=self.path, timeout=300)
+                    except RuntimeError as e:
+                        # A push that timed out may still reach GitHub. If it already
+                        # has, that's success; if not, don't let the device resend it
+                        # by itself, or it could be saved twice.
+                        if not getattr(e, "timed_out", False):
+                            raise
+                        if not self._remote_is_head():
+                            raise WriteError("Saving to GitHub took too long, so it may or may "
+                                             "not have been saved. Reload to check before "
+                                             "trying again.") from e
                 except BaseException as e:
                     self._reset_quietly()
                     if isinstance(e, RuntimeError):
@@ -361,6 +443,23 @@ class RepoSync:
                 log.info("pushed %s: %s", self.head[:7], message.splitlines()[0])
                 return True
             raise WriteError("GitHub kept changing while saving. Try again.", retry=True)
+
+    def _retry_soon(self) -> float:
+        """A last-checked time that makes the next background check due in about a minute."""
+        return time.time() - self.interval + 60
+
+    def _remote_tip(self, timeout: int = 30, url: str | None = None, token: str | None = None,
+                    branch: str | None = None) -> str:
+        """The commit GitHub's branch points at ("" if the branch doesn't exist)."""
+        out = self._git("ls-remote", url or self.url, f"refs/heads/{branch or self.branch}",
+                        timeout=timeout, token=token)
+        return out.split()[0] if out else ""
+
+    def _remote_is_head(self) -> bool:
+        try:
+            return self._remote_tip() == self._git("rev-parse", "HEAD", cwd=self.path)
+        except RuntimeError:
+            return False
 
     def _commit(self, paths: list[str], message: str, author: str) -> bool:
         self._git("add", "-A", "--", *paths, cwd=self.path)
@@ -385,8 +484,36 @@ class RepoSync:
         self._save_state()
         log.info("committed %s: %s", self.head[:7], message.splitlines()[0])
         if self.url:
-            self._push_backup()
+            self._backup_soon()
         return True
+
+    def _backup_soon(self) -> None:
+        """Send the new commit to GitHub without making the save wait for it.
+
+        If the app stops before it's sent, the next background check sees that
+        GitHub is behind and sends it then.
+        """
+        # Called with the lock held. One pending push is enough: it sends
+        # whatever HEAD is when it runs, so later saves don't queue more.
+        if self._backup_pending:
+            return
+        self._backup_pending = True
+
+        def run():
+            # Under the lock, so it never overlaps another push or a sync; one
+            # pending push sends every commit made before it runs.
+            with self._lock:
+                self._backup_pending = False
+                if self.mode == "server" and self.url:
+                    self._push_backup()
+                    self._save_state()
+
+        self._backup_thread = threading.Thread(target=run, name="backup-push", daemon=True)
+        self._backup_thread.start()
+
+    def wait_for_backup(self, timeout: float | None = None) -> None:
+        if self._backup_thread:
+            self._backup_thread.join(timeout)
 
     # ------------------------------------------------------------------ server mode
 
@@ -416,8 +543,8 @@ class RepoSync:
     def clone_full(self) -> None:
         """Server mode from an existing GitHub garage: all of its history, here."""
         with self._lock:
-            if (self.path / ".git").exists() or (self.path.exists() and any(self.path.iterdir())):
-                raise WriteError(f"The data folder ({self.path}) already has files.")
+            if self.path.exists() and any(self.path.iterdir()):
+                raise FolderNotEmpty(f"The data folder ({self.path}) already has files.")
             self.path.mkdir(parents=True, exist_ok=True)
             try:
                 self._git("clone", "-q", "--branch", self.branch, self.url, str(self.path))
@@ -459,11 +586,27 @@ class RepoSync:
         if self.backup_error:
             raise WriteError(f"GitHub isn't up to date yet: {self.backup_error}")
         with self._lock:
-            out = self._git("ls-remote", self.url, f"refs/heads/{self.branch}", timeout=30)
-            if not out or out.split()[0] != self.head:
+            if self._remote_tip() != self.head:
                 raise WriteError("GitHub isn't up to date yet. Try again in a moment.", retry=True)
             self.mode = "github"
             self.last_error = ""
+            self._save_state()
+
+    def reset_unconfigured(self, empty_folder: bool) -> None:
+        """Undo a first-run setup that failed partway: back to "not set up",
+        and, if the folder was empty when setup began, empty again."""
+        self.configure("", "", "", self.branch)  # first, so the loop leaves the folder alone
+        if not empty_folder or not self.path.exists():
+            return
+        with self._lock:
+            self.depth = 1
+            self.last_changed = None
+            for p in self.path.iterdir():
+                if p.is_dir() and not p.is_symlink():
+                    shutil.rmtree(p)
+                else:
+                    p.unlink()
+            self.head = ""
             self._save_state()
 
     def seed_remote(self, starter: Path | None) -> None:
@@ -476,18 +619,22 @@ class RepoSync:
             except RuntimeError as e:
                 raise WriteError(friendly_git_error(getattr(e, "detail", str(e)))) from e
 
-    def _push_backup(self) -> bool:
-        """Best effort: a failed backup never loses or blocks an edit."""
+    def _push_backup(self, timeout: int = 300) -> bool:
+        """Best effort: a failed backup never loses an edit. Call with the lock held."""
         try:
             self._git("push", "-q", self.url, f"HEAD:refs/heads/{self.branch}",
-                      cwd=self.path, timeout=300)
+                      cwd=self.path, timeout=timeout)
         except RuntimeError as e:
             detail = getattr(e, "detail", str(e))
             if any(s in detail for s in ("[rejected]", "fetch first", "non-fast-forward")):
                 self.backup_error = "Waiting to bring in changes made on GitHub."
-                self.trigger()
+                self._recheck = True
+                self._checked_at = self._retry_soon()
             else:
                 self.backup_error = friendly_git_error(detail)
+                if is_network_error(detail):  # worth another try soon; refusals aren't
+                    self._recheck = True
+                    self._checked_at = self._retry_soon()
             log.warning("backup push failed: %s", e)
             return False
         self.backup_error = ""
@@ -505,9 +652,9 @@ class RepoSync:
         if self.mode != "server" or not self.url:
             return False
         with self._lock:
+            self._recheck = False
             try:
-                remote = self._git("ls-remote", self.url, f"refs/heads/{self.branch}", timeout=30)
-                if not remote:  # an empty GitHub repo: send everything
+                if not self._remote_tip():  # an empty GitHub repo: send everything
                     self._push_backup()
                     return False
                 self._git("fetch", "-q", self.url, self.branch, cwd=self.path)
@@ -553,7 +700,9 @@ class RepoSync:
                 return False
             finally:
                 self.last_checked = datetime.now(timezone.utc)
-                self._checked_at = time.time()
+                # After a rejected push, leave the next check due right away.
+                self._checked_at = self._retry_soon() if self._recheck else time.time()
+                self._recheck = False
                 self._save_state()
 
     def _is_ancestor(self, a: str, b: str) -> bool:
@@ -564,8 +713,7 @@ class RepoSync:
         """Can this repo be reached with this token? Returns its branch tip ("" if
         the branch doesn't exist yet). Raises WriteError with a readable reason."""
         try:
-            out = self._git("ls-remote", url, f"refs/heads/{branch}", timeout=30, token=token)
-            return out.split()[0] if out else ""
+            return self._remote_tip(url=url, token=token, branch=branch)
         except RuntimeError as e:
             detail = getattr(e, "detail", str(e)).lower()
             if any(s in detail for s in ("not found", "403", "401", "authentication",
@@ -600,13 +748,18 @@ class RepoSync:
         if not self.versioned or not (self.path / ".git").exists():
             return []
         with self._lock:
-            if self.git_mode and (self.path / ".git" / "shallow").exists():
+            if (self.git_mode and self.depth < self.HISTORY_DEPTH
+                    and (self.path / ".git" / "shallow").exists()
+                    and time.time() - self._history_tried_at > 60):
+                self._history_tried_at = time.time()
                 try:
                     self._git("fetch", "-q", "--depth", str(self.HISTORY_DEPTH), self.url,
-                              self.branch, cwd=self.path)
+                              self.branch, cwd=self.path, timeout=300)
                     self._count("fetch")
                     self._git("reset", "-q", "--hard", "FETCH_HEAD", cwd=self.path)
                     self.head = self._git("rev-parse", "HEAD", cwd=self.path)
+                    self.depth = self.HISTORY_DEPTH
+                    self._save_state()
                 except RuntimeError as e:
                     log.warning("could not fetch history: %s", e)
             out = self._git("log", f"-n{limit}", "--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s",
@@ -627,8 +780,6 @@ class RepoSync:
                 self._git(*args, cwd=self.path)
             except RuntimeError as e:
                 log.warning("could not reset after a failed write: %s", e)
-            if to == "HEAD" and args[0] == "clean":
-                break
 
     # ------------------------------------------------------------------ loop
 
@@ -642,18 +793,24 @@ class RepoSync:
         def loop():
             backoff = 60
             while True:
-                if not self.remote:
-                    changed, wait = False, 60
-                elif self.git_mode and not (self.path / ".git").exists():
-                    # No clone yet (bad token, GitHub down): retry, backing off to
-                    # SYNC_INTERVAL so a misconfiguration can't hammer GitHub.
-                    changed = self.sync_once()
-                    wait = 60 if changed else backoff
-                    backoff = 60 if changed else min(backoff * 2, self.interval)
-                else:
-                    changed, wait = self.ensure_fresh(self.interval), 60
-                if changed:
-                    on_change()
+                changed, wait = False, 60
+                try:
+                    if not self.remote:
+                        pass
+                    elif self.git_mode and not (self.path / ".git").exists():
+                        # No clone yet (bad token, GitHub down): retry, backing off to
+                        # SYNC_INTERVAL so a misconfiguration can't hammer GitHub.
+                        changed = self.sync_once()
+                        wait = 60 if changed else backoff
+                        backoff = 60 if changed else min(backoff * 2, self.interval)
+                    else:
+                        changed = self.ensure_fresh(self.interval)
+                        backoff = 60  # a normal pass: errors start backing off afresh
+                    if changed:
+                        on_change()
+                except Exception:  # never let one bad check stop syncing for good
+                    log.exception("background sync failed")
+                    wait, backoff = backoff, min(backoff * 2, self.interval)
                 self._wake.wait(wait)
                 self._wake.clear()
 

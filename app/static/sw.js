@@ -93,13 +93,21 @@ function pageKey(href) {
 function storable(res, url) {
   return res && res.ok && res.status === 200 && res.type === "basic" && !res.redirected
     && (res.headers.get("content-type") || "").includes("text/html")
-    && !NO_STORE.some((p) => url.pathname.startsWith(p));
+    && !NO_STORE.some((p) => url.pathname.startsWith(p))
+    // A form shown again with an error isn't the page as it normally is.
+    && !url.searchParams.has("error");
 }
 
-function stamped(res) {
+// The copy to keep: stamped with when it was saved, and without the one-time
+// "Changes saved" message a page carries right after a save (it's the freshest
+// copy of the page, but the message shouldn't pop up again offline).
+async function stamped(res) {
   const headers = new Headers(res.headers);
   headers.set("x-saved-at", String(Date.now()));
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  const html = (await res.text()).replace(/ data-flash="[^"]*"/, "");
+  return new Response(html, { status: res.status, statusText: res.statusText, headers });
 }
 
 // The saved copy is marked so the page can say it's showing one.
@@ -113,7 +121,7 @@ async function page(req, url, e) {
   const key = pageKey(req.url);
   const cache = await caches.open(PAGES);
   const net = fetch(req).then(async (res) => {
-    if (storable(res, url)) await cache.put(key, stamped(res.clone()));
+    if (storable(res, url)) await cache.put(key, await stamped(res.clone()));
     return res;
   });
   try {
@@ -278,7 +286,7 @@ function refresh(force) {
     await pool(m.pages, 4, async (u) => {
       const url = new URL(u, location.origin);
       const res = await fetch(url, { headers: { Accept: "text/html" }, credentials: "same-origin" });
-      if (storable(res, url)) { await pages.put(pageKey(url.href), stamped(res)); ok++; }
+      if (storable(res, url)) { await pages.put(pageKey(url.href), await stamped(res)); ok++; }
     });
     if (!ok) return false;  // logged out, or the server is struggling: try again later
     const wantPages = new Set(m.pages.map((u) => pageKey(u)));
