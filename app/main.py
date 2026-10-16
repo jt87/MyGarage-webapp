@@ -33,7 +33,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import __version__, auth, edit, repo, storage
+from . import __version__, auth, edit, releases, repo, storage
 from .sync import FolderNotEmpty, RepoSync, Watcher, WriteError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -89,6 +89,12 @@ throttle = auth.LoginThrottle()
 if not auth_cfg.configured and os.environ.get("AUTH_USERNAME") and os.environ.get("AUTH_PASSWORD"):
     auth_cfg.set_credentials(os.environ["AUTH_USERNAME"], os.environ["AUTH_PASSWORD"])
 
+# UPDATE_CHECK=false stops the daily look at GitHub's release list.
+versions = releases.Versions(
+    CONFIG_PATH.parent, CACHE_PATH,
+    check=os.environ.get("UPDATE_CHECK", "").strip().lower() not in ("0", "false", "no", "off"))
+versions.startup(existing_install=auth_cfg.configured)
+
 env = Environment(loader=FileSystemLoader(HERE / "templates"),
                   autoescape=select_autoescape(["html"]))
 def static_version() -> str:
@@ -106,9 +112,10 @@ STATIC_VERSION = static_version()
 env.globals.update(site_title=SITE_TITLE, money=repo.fmt_money, sync=sync,
                    github_repo="", branch=sync.branch, auth=auth_cfg, store=store,
                    METHODS=auth.METHODS, REQUIRED=auth.REQUIRED, v=STATIC_VERSION,
-                   app_version=__version__,
+                   app_version=__version__, versions=versions,
                    editable=not READ_ONLY, max_upload_mb=MAX_UPLOAD_MB)
 env.filters["q"] = lambda s: quote(str(s))
+env.filters["md"] = lambda s: repo._md().render(str(s))  # raw HTML is off, so this is safe
 
 
 def apply_storage() -> None:
@@ -160,6 +167,9 @@ def render(request: Request, template: str, status: int = 200, **ctx) -> HTMLRes
     ctx.setdefault("error", request.query_params.get("error", ""))
     # Log Out only makes sense for a forms login with a real session.
     ctx["can_logout"] = auth_cfg.method == "forms" and getattr(request.state, "via", "") == "session"
+    versions.maybe_check()
+    ctx.setdefault("whats_new", not versions.data.get("whats_new_seen", True))
+    ctx.setdefault("major_popup", versions.major_popup())
     return HTMLResponse(env.get_template(template).render(**ctx), status_code=status,
                         headers={"Cache-Control": "no-cache"})
 
@@ -1161,6 +1171,31 @@ async def settings(request: Request):
                   flash="", msg=request.query_params.get("msg", ""), error=request.query_params.get("error", ""))
 
 
+async def settings_about(request: Request):
+    # Reading the notes answers both notices.
+    versions.mark_whats_new_seen()
+    if major := versions.major_popup():
+        versions.dismiss_major(major.version)
+    md = repo._md()
+    newer = [(r, md.render(r.notes)) for r in versions.newer()]
+    installed = [(r, md.render(r.notes)) for r in versions.installed_notes()]
+    return render(request, "about.html", back=("/settings", "Settings"), title="What's New",
+                  tab="garage", whats_new=False, newer=newer, installed=installed)
+
+
+async def settings_updates(request: Request):
+    """Dismiss the "Updated" banner or the new-major-version notice."""
+    form = await request.form()
+    action = form.get("action")
+    if action == "seen":
+        versions.mark_whats_new_seen()
+    elif action == "dismiss_major":
+        versions.dismiss_major(str(form.get("version", "")))
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"ok": True})
+    return RedirectResponse(safe_next(str(form.get("next", ""))), status_code=303)
+
+
 def back_to_settings(msg: str = "", error: str = "") -> RedirectResponse:
     q = f"?msg={quote(msg)}" if msg else f"?error={quote(error)}" if error else ""
     return RedirectResponse(f"/settings{q}", status_code=303)
@@ -1370,6 +1405,8 @@ routes = [
     Route("/settings/apikey", settings_apikey, methods=["POST"]),
     Route("/settings/sessions", settings_sessions, methods=["POST"]),
     Route("/settings/storage", settings_storage, methods=["POST"]),
+    Route("/settings/about", settings_about),
+    Route("/settings/updates", settings_updates, methods=["POST"]),
     Route("/manifest.webmanifest", manifest),
     Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
 ]

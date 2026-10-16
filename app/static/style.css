@@ -588,4 +588,12 @@ input.row-input[type=date] { -webkit-appearance: none; appearance: none; text-al
 .history-row form { flex: 0 0 auto; }
 .row.has-check { gap: 12px; }
 .banner.section-footer[hidden] { display: none; }
+.update-banner { display: flex; align-items: center; gap: 12px; }
+.update-banner span { flex: 1; }
+.banner-close { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin: -4px -8px -4px 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--secondary-label); cursor: pointer; }
+.banner-close svg { width: 16px; height: 16px; }
+.sheet-group:focus { outline: none; }
+.sheet-head.notice strong { font-size: 1rem; color: var(--label); }
+.sheet-head.notice span { font-size: .882rem; }
+.sheet-notes { max-height: 40vh; overflow-y: auto; border-radius: 0; background: transparent; border-top: .5px solid var(--separator); font-size: .882rem; }
 .banner.section-footer { margin: 10px 0 0; padding: 10px 14px; }

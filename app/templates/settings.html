@@ -145,5 +145,39 @@
     <div class="row selectable"><span class="row-body text t-subhead secondary">Forgot your password? From the TrueNAS shell for this app, run <code>python -m app.auth reset</code>, then open {{ site_title }} from your home network to create a new login.</span></div>
   </div>
 </div>
-<p class="section-footer" style="text-align:center">{{ site_title }} {{ app_version }} · <a href="https://github.com/jt87/MyGarage-webapp/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What's New</a></p>
+{% set auto = versions.auto() %}
+{% set minor = versions.same_major_update() %}
+{% set major = versions.major_update() %}
+{% set check = versions.last_check %}
+<div class="section" id="about">
+  <div class="section-header">About</div>
+  <div class="group">
+    <div class="row has-icon">{{ tile("info", "gray") }}<span class="row-body">Version</span><span class="row-detail" data-app-version>{{ app_version }}</span></div>
+    {% if versions.installed_at %}
+    <div class="row has-icon">{{ tile("calendar", "red") }}<span class="row-body">Installed</span><span class="row-detail">{{ versions.installed_at|ago }}{% if versions.previous %} · from {{ versions.previous }}{% endif %}</span></div>
+    {% endif %}
+    <div class="row has-icon">{{ tile("download", "blue") }}<span class="row-body"><span class="row-title">Updates</span>
+      <span class="row-sub {{ 'destructive' if major }}">
+      {%- if major %}{{ major.version }} is available. It needs you to update, so it won't install on its own.
+      {%- elif minor and auto.state == "ok" %}{{ minor.version }} installs tonight
+      {%- elif minor %}{{ minor.version }} is available
+      {%- elif not versions.check_enabled %}Not checking (UPDATE_CHECK is off)
+      {%- elif check.error and not check.at %}Couldn't reach GitHub to check
+      {%- elif check.at %}Up to date · checked {{ check.at|ago }}
+      {%- else %}Checking…{% endif %}</span></span></div>
+    <div class="row has-icon">{{ tile("refresh-cw", "green") }}<span class="row-body"><span class="row-title">Automatic Upgrades</span>
+      <span class="row-sub {{ 'destructive' if auto.state in ('failed', 'stale') }}">
+      {%- if auto.state == "off" %}Not set up
+      {%- elif auto.state == "stale" %}Haven't run since {{ auto.at|ago }}. Check the TrueNAS Cron Job.
+      {%- elif auto.state == "failed" %}{{ auto.to or "The new version" }} didn't start, so {{ auto["from"] or "the previous version" }} was put back · {{ auto.at|ago }}
+      {%- elif auto.state == "pinned" %}Off: the app's image is pinned to one version ({{ auto.detail }})
+      {%- elif auto.state == "blocked" %}On · {{ auto.to }} waits for you to update
+      {%- elif auto.result == "upgraded" %}On · upgraded to {{ auto.to }} {{ auto.at|ago }}
+      {%- else %}On · checked {{ auto.at|ago }}{% endif %}</span></span></div>
+    <a class="row has-icon" href="/settings/about">{{ tile("file-text", "orange") }}<span class="row-body">What's New</span><span class="chev"></span></a>
+  </div>
+  <p class="section-footer">
+    {%- if auto.state in ("off", "stale", "pinned") %}Automatic upgrades install new {{ app_version.split(".")[0] }}.x releases overnight from a TrueNAS Cron Job. <a href="https://github.com/jt87/MyGarage-webapp#automatic-upgrades" target="_blank" rel="noopener">How to set it up</a>
+    {%- else %}New releases with the same first number install overnight. A release that needs something from you (a new first number) never installs on its own.{% endif %}</p>
+</div>
 {% endblock %}

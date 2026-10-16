@@ -57,7 +57,29 @@ You need TrueNAS SCALE 24.10 (Electric Eel) or newer, which runs apps with Docke
 
 That's it. Add it to your iPhone's Home Screen (Share → Add to Home Screen), and see [Put it on your domain](#put-it-on-your-domain) to use it away from home and offline.
 
-To update the app later, open it in Apps and choose Update (or Pull Image, then restart).
+To update the app later, open it in Apps and choose Update (or Pull Image, then restart), or let it upgrade itself overnight:
+
+### Automatic upgrades
+
+A TrueNAS Cron Job can install new releases at 3 AM. It only installs releases with the same first number (1.2, 1.3, …), which never need anything from you. A release that does (2.0) is never installed on its own; the app shows a notice with what to do instead. If a new version doesn't start, the previous one is put back and that version is skipped until the next release. Settings → About shows the last run.
+
+1. **Follow the major version.** Apps → mygarage → Edit, and change the image to `ghcr.io/jt87/mygarage:1` (available from 1.2.0). An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, is never changed.
+2. **Save the script on a pool.** In System → Shell:
+   ```
+   mkdir -p /mnt/tank/scripts
+   curl -fsSL -o /mnt/tank/scripts/mygarage-auto-upgrade.sh https://raw.githubusercontent.com/jt87/MyGarage-webapp/main/deploy/auto-upgrade.sh
+   chmod 700 /mnt/tank/scripts/mygarage-auto-upgrade.sh
+   ```
+   Use your own pool name instead of `tank`. Read [the script](deploy/auto-upgrade.sh) first if you like; it's short.
+3. **Add the Cron Job.** System → Advanced Settings → Cron Jobs → Add:
+   - Description: `MyGarage upgrade`
+   - Command: `/mnt/tank/scripts/mygarage-auto-upgrade.sh mygarage` (the last word is the app's name in Apps)
+   - Run As User: `root`
+   - Schedule: Custom, `0 3 * * *` (3:00 AM daily)
+   - Tick **Hide Standard Output** and leave Hide Standard Error unticked, so TrueNAS only emails you when something went wrong.
+4. To try it now, choose **Run Now** on the Cron Job, then look at Settings → About.
+
+The app checks GitHub's release list once a day to show what's new and what's available (set `UPDATE_CHECK=false` to stop it). It never installs anything itself, since that would mean giving it control of TrueNAS.
 
 ### Using GitHub
 
@@ -158,6 +180,7 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 | `GIT_AUTHOR_EMAIL` | `mygarage@users.noreply.github.com` | Email on commits made from the app |
 | `GITHUB_REPO` | (none) | Your data repo as `owner/name`; shows "Edit" links to the README on GitHub |
 | `PORT` | `8000` | Port the app listens on inside the container |
+| `UPDATE_CHECK` | `true` | `false` stops the daily check of GitHub's release list (Settings → About and the new-version notice) |
 | `SITE_TITLE` | `MyGarage` | App name: large title, first tab, Home Screen label |
 | `REPO_PATH` / `CACHE_PATH` | `/data/repo`, `/data/cache` | Where the clone and thumbnails live |
 
