@@ -2,6 +2,14 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
+## 1.2.1 (2026-10-16)
+
+### Fixed
+- The README now explains how to move from an older YAML (one pinned to a version, or with `GIT_REPO_URL`) to the current one, keeping your garage, login and settings.
+
+### Upgrading from 1.2.0
+- Nothing is required: open the app in TrueNAS Apps and choose Update.
+
 ## 1.2.0 (2026-10-16)
 
 ### Added

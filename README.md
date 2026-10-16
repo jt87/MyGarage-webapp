@@ -61,11 +61,24 @@ That's it. Add it to your iPhone's Home Screen (Share → Add to Home Screen), a
 
 When a new version is out, the app shows a banner. To update, open the app in TrueNAS **Apps** and choose **Update**. TrueNAS downloads the new version and restarts the app; your garage, login and settings stay as they are. There's nothing to reinstall.
 
-This works because the image in the YAML follows `ghcr.io/jt87/mygarage:1`, which always points at the newest 1.x release. If you installed with an older YAML, change the image to that once (Apps → mygarage → Edit). An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, never changes, so Update has nothing to bring in.
+This works because the image in the YAML follows `ghcr.io/jt87/mygarage:1`, which always points at the newest 1.x release. An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, never changes, so Update has nothing to bring in. If yours is pinned, see [Moving from an older YAML](#moving-from-an-older-yaml).
 
 A release with a new first number (2.0) may need a step from you, such as moving a folder. It's never picked up by `:1`. The app shows a notice with the steps and the new image to use.
 
 Settings → About shows your version and whether an update is available, and What's New has the notes for every version. The app checks GitHub's release list once a day for this; set `UPDATE_CHECK=false` to stop it. It never installs anything itself.
+
+### Moving from an older YAML
+
+If you installed before 1.2, your YAML may pin the image to one version, set `GIT_REPO_URL` and `GIT_TOKEN`, or carry other settings the current YAML no longer needs. Your garage, login and settings are kept in the dataset, so you can swap in the current YAML without losing anything:
+
+1. **Note your dataset path.** Apps → mygarage → Edit, and copy the left side of the `volumes:` line (for example `/mnt/tank/apps/mygarage`). Close without saving.
+2. **Delete the app.** Apps → mygarage → ⋮ → Delete. This removes the app, not the dataset.
+3. **Install the current YAML.** Install via YAML as in [Deploy on TrueNAS SCALE](#deploy-on-truenas-scale), with the same name and your dataset path. Open the app: it goes straight to your garage and login.
+4. **Reconnect GitHub, if your old YAML had `GIT_REPO_URL`.** Your garage is now kept on this server, with its history. In Settings → Storage choose Connect GitHub Backup with the same repo and a new token (see [Using GitHub](#using-github)), then Make GitHub the Primary Copy if you want GitHub to stay primary. Revoke the old token on GitHub, since it sat in plain text in the YAML.
+
+The current YAML listens on every network the server is on. If yours was limited to one address, such as `100.64.0.1:8088:8000` for Tailscale only, keep that line under `ports:`.
+
+If your old YAML had `GIT_REPO_URL` and never ran 1.1 or newer, Settings → Storage shows a plain folder after step 3: tap Keep History on This Server, then connect the repo.
 
 ### Using GitHub
 
