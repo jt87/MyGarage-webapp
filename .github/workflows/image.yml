@@ -82,7 +82,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: python scripts/release_notes.py "${GITHUB_REF_NAME#v}" > notes.md
+      - run: python3 scripts/release_notes.py "${GITHUB_REF_NAME#v}" > notes.md
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "$GITHUB_REF_NAME" --title "MyGarage ${GITHUB_REF_NAME#v}" --notes-file notes.md --verify-tag

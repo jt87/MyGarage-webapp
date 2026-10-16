@@ -2,7 +2,7 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
-## 1.1.0 (unreleased)
+## 1.1.0 (2026-10-16)
 
 ### Added
 - **Edit from your phone.** Log maintenance (and edit or delete entries), add photos, receipts and manuals, edit a tool's details and parts, add and delete tools, manage files (rename, change type, set the cover photo, delete), create and edit projects, and add or edit reference pages. Every change is one commit to your garage's history.
