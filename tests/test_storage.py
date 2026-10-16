@@ -163,6 +163,7 @@ FIRST_RUN = textwrap.dedent("""
         r = c.post("/tools/new", data={"model_name": "Acme X1", "subtitle": "Sander"},
                    headers={"Accept": "application/json"})
         out["new"] = r.json()
+        main.sync.wait_for_backup(60)  # the push runs after the save; don't exit first
         out["mode"] = main.sync.mode
         out["after"] = c.get("/", follow_redirects=False).status_code
     print("RESULT" + json.dumps(out))
@@ -278,6 +279,7 @@ SWITCH = textwrap.dedent("""
         out["mode3"] = main.sync.mode
         r = c.post("/tools/new", data={"model_name": "Acme Z9"}, headers={"Accept": "application/json"})
         out["new"] = r.json().get("ok")
+        main.sync.wait_for_backup(60)  # the push runs after the save; don't exit first
     print("RESULT" + json.dumps(out))
 """)
 
