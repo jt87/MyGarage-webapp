@@ -85,6 +85,10 @@
     });
   });
 
+  // ---------------------------------------------------------------- a new major version
+  const majorUpdate = $("[data-major-update]");
+  if (majorUpdate && majorUpdate.showModal) majorUpdate.showModal();
+
   // ---------------------------------------------------------------- action sheet ("where to buy")
   const sheet = $("[data-sheet]");
   function openSheet(data) {

@@ -3,7 +3,7 @@ name: Web app
 # Kept small to stay well inside GitHub's free tier:
 # - Pull requests run the tests only.
 # - A merge to main builds one image tagged `edge` (for trying the next release).
-# - A version tag (v1.2.0) builds the release image `1.2.0`, `1.2` and `latest`,
+# - A version tag (v1.2.0) builds the release image `1.2.0`, `1.2`, `1` and `latest`,
 #   and publishes a GitHub release with that version's CHANGELOG notes.
 # - amd64 only (TrueNAS SCALE is x86-64), with layer caching, so a build takes ~2 min.
 on:
@@ -59,6 +59,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=edge,enable={{is_default_branch}}
             type=sha,format=short

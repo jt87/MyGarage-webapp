@@ -54,6 +54,13 @@
     </header>
     <main class="content">
       <div class="offline-bar" data-offline-bar hidden><span data-offline-text>Offline. Showing the copy saved on this device.</span></div>
+      {% if whats_new %}
+      <form class="banner ok update-banner" method="post" action="/settings/updates" role="status">
+        <input type="hidden" name="action" value="seen"><input type="hidden" name="next" value="{{ path }}">
+        <span>Updated to {{ app_version }}{% if versions.upgraded_overnight %} overnight{% endif %}. <a href="/settings/about">See What's New</a></span>
+        <button class="banner-close" aria-label="Dismiss"><svg aria-hidden="true"><use href="/static/icons.svg#x"/></svg></button>
+      </form>
+      {% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>
@@ -69,6 +76,20 @@
 </nav>
 
 <dialog class="sheet" data-sheet aria-label="Options"></dialog>
+{% if major_popup %}
+<dialog class="sheet" data-major-update aria-labelledby="major-update-title">
+  <div class="sheet-group" tabindex="-1" autofocus>
+    <div class="sheet-head notice"><strong id="major-update-title">{{ site_title }} {{ major_popup.version }} Is Available</strong>
+      <span>It won't install on its own, because it needs something from you first.</span></div>
+    {% if major_popup.upgrading %}<div class="sheet-notes prose">{{ major_popup.upgrading|md|safe }}</div>{% endif %}
+    <a class="sheet-btn" href="/settings/about#v{{ major_popup.version }}">Read What's New</a>
+  </div>
+  <form method="post" action="/settings/updates">
+    <input type="hidden" name="action" value="dismiss_major"><input type="hidden" name="version" value="{{ major_popup.version }}"><input type="hidden" name="next" value="{{ path }}">
+    <button class="sheet-btn sheet-cancel">Not Now</button>
+  </form>
+</dialog>
+{% endif %}
 <div class="toast" data-toast role="status" aria-live="polite"{% if flash %} data-flash="{{ flash }}"{% endif %}></div>
 <script src="/static/app.js?v={{ v }}" defer></script>
 {% block scripts %}{% endblock %}

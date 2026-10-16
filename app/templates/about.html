@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% set large = true %}
+{% block content %}
+<div class="large-title"><h1>What's New</h1></div>
+
+{% for r, html in newer %}
+<div class="section" id="v{{ r.version }}">
+  <div class="section-header">{{ r.version }}{% if r.date %} · {{ r.date }}{% endif %} · Not Installed Yet</div>
+  <div class="prose">{{ html|safe }}</div>
+  <p class="section-footer"><a href="{{ r.url }}" target="_blank" rel="noopener">Release on GitHub</a></p>
+</div>
+{% endfor %}
+
+{% for r, html in installed %}
+<div class="section" id="v{{ r.version }}">
+  <div class="section-header">{{ r.version }}{% if r.date %} · {{ r.date }}{% endif %}{% if loop.first %} · Installed{% endif %}</div>
+  <div class="prose">{{ html|safe }}</div>
+</div>
+{% else %}
+<div class="section"><div class="prose"><p>Release notes for {{ app_version }} aren't included in this build. They're on <a href="https://github.com/jt87/MyGarage-webapp/releases" target="_blank" rel="noopener">GitHub</a>.</p></div></div>
+{% endfor %}
+{% endblock %}

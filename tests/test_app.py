@@ -12,6 +12,8 @@ import fixture  # noqa: E402
 _tmp = Path(tempfile.mkdtemp())
 os.environ["REPO_PATH"] = str(fixture.build(_tmp / "repo"))
 os.environ["CACHE_PATH"] = str(_tmp / "cache")
+# The tests never ask GitHub for releases (test_versions.py fakes it).
+os.environ["UPDATE_CHECK"] = "false"
 
 os.environ["CONFIG_PATH"] = os.path.join(tempfile.mkdtemp(), "auth.json")
 

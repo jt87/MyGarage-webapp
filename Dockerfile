@@ -15,6 +15,8 @@ WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+# Release notes for Settings → About, readable offline.
+COPY CHANGELOG.md ./
 
 # 568 is TrueNAS's built-in "apps" user; override with `user:` in compose if needed.
 ENV PYTHONUNBUFFERED=1 \

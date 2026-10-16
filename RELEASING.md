@@ -1,7 +1,7 @@
 # Releasing MyGarage
 
 A release is a version tag on `main`. GitHub Actions then tests it, builds
-`ghcr.io/jt87/mygarage:<version>` (plus `<major>.<minor>` and `latest`), and publishes a
+`ghcr.io/jt87/mygarage:<version>` (plus `<major>.<minor>`, `<major>` and `latest`), and publishes a
 GitHub release with that version's notes from CHANGELOG.md.
 
 1. In a pull request, set the version in `app/__init__.py`, and in CHANGELOG.md change
@@ -18,6 +18,8 @@ GitHub release with that version's notes from CHANGELOG.md.
    changelog section still says "unreleased".
 
 Version numbers: 1.1.1 only fixes things, 1.2.0 adds features, 2.0.0 needs something
-from people when they update (say what in the changelog).
+from people when they update. Say what under `### Upgrading from <old>` in the changelog:
+the app shows that section in its new-version notice, and overnight upgrades never
+cross a major version.
 
 Builds of `main` between releases are tagged `edge`, for trying the next release.
