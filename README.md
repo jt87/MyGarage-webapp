@@ -63,6 +63,8 @@ When a new version is out, the app shows a banner. To update, open the app in Tr
 
 This works because the image in the YAML follows `ghcr.io/jt87/mygarage:1`, which always points at the newest 1.x release. An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, never changes, so Update has nothing to bring in. If yours is pinned, see [Moving from an older YAML](#moving-from-an-older-yaml).
 
+Update can stay grayed out for a while after a release. TrueNAS doesn't check `:1` against GitHub's registry live: a background job compares images every so often, and Update lights up after its next check. To update right away, open the app in **Apps**, choose **Edit**, add `pull_policy: always` on its own line under `restart: unless-stopped` (same indentation), and **Save**. TrueNAS redeploys the app and downloads the newest `:1` image as it does. You can leave the line in: the app then picks up the newest 1.x release every time it restarts.
+
 A release with a new first number (2.0) may need a step from you, such as moving a folder. It's never picked up by `:1`. The app shows a notice with the steps and the new image to use.
 
 Settings → About shows your version and whether an update is available, and What's New has the notes for every version. The app checks GitHub's release list once a day for this; set `UPDATE_CHECK=false` to stop it. It never installs anything itself.
