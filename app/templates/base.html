@@ -57,7 +57,14 @@
       {% if whats_new %}
       <form class="banner ok update-banner" method="post" action="/settings/updates" role="status">
         <input type="hidden" name="action" value="seen"><input type="hidden" name="next" value="{{ path }}">
-        <span>Updated to {{ app_version }}{% if versions.upgraded_overnight %} overnight{% endif %}. <a href="/settings/about">See What's New</a></span>
+        <span>Updated to {{ app_version }}. <a href="/settings/about">See What's New</a></span>
+        <button class="banner-close" aria-label="Dismiss"><svg aria-hidden="true"><use href="/static/icons.svg#x"/></svg></button>
+      </form>
+      {% endif %}
+      {% if update_banner %}
+      <form class="banner ok update-banner" method="post" action="/settings/updates" role="status">
+        <input type="hidden" name="action" value="dismiss_update"><input type="hidden" name="version" value="{{ update_banner.version }}"><input type="hidden" name="next" value="{{ path }}">
+        <span>{{ site_title }} {{ update_banner.version }} is available. To update, open it in TrueNAS Apps and choose Update. <a href="/settings/about#v{{ update_banner.version }}">What's New</a></span>
         <button class="banner-close" aria-label="Dismiss"><svg aria-hidden="true"><use href="/static/icons.svg#x"/></svg></button>
       </form>
       {% endif %}
@@ -80,7 +87,7 @@
 <dialog class="sheet" data-major-update aria-labelledby="major-update-title">
   <div class="sheet-group" tabindex="-1" autofocus>
     <div class="sheet-head notice"><strong id="major-update-title">{{ site_title }} {{ major_popup.version }} Is Available</strong>
-      <span>It won't install on its own, because it needs something from you first.</span></div>
+      <span>Updating to it needs a step from you first, so Update in TrueNAS won't pick it up on its own.</span></div>
     {% if major_popup.upgrading %}<div class="sheet-notes prose">{{ major_popup.upgrading|md|safe }}</div>{% endif %}
     <a class="sheet-btn" href="/settings/about#v{{ major_popup.version }}">Read What's New</a>
   </div>

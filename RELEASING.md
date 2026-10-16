@@ -19,7 +19,7 @@ GitHub release with that version's notes from CHANGELOG.md.
 
 Version numbers: 1.1.1 only fixes things, 1.2.0 adds features, 2.0.0 needs something
 from people when they update. Say what under `### Upgrading from <old>` in the changelog:
-the app shows that section in its new-version notice, and overnight upgrades never
-cross a major version.
+the app shows that section in its new-version notice, and the `:<major>` image tag
+people follow never moves to a new major version.
 
 Builds of `main` between releases are tagged `edge`, for trying the next release.
