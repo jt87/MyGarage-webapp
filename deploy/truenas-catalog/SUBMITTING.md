@@ -15,6 +15,13 @@ setting names its template library reads (`network.web_port`, `storage.data`, `r
 compose template. `check.sh` vendors the library itself (`templates/library/`) from
 truenas/apps; it's TrueNAS's code and isn't kept in this repo.
 
+## Left out on purpose
+
+The install form leaves out two options many catalog apps carry: SMB/NFS shares as extra
+storage, and joining extra Docker networks. MyGarage keeps everything in its own data
+storage and is reached through its port, so neither is needed. If a reviewer asks for
+them, add them in our own wording.
+
 ## Before submitting
 
 1. **Publish a release** so the image exists: see [RELEASING.md](../../RELEASING.md).
