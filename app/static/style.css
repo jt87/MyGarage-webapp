@@ -1,9 +1,17 @@
-/* MyGarage — styled after Apple's Human Interface Guidelines (iOS 17/18).
-   Colors are Apple's semantic system colors; type follows the iOS Dynamic
-   Type scale and honors the user's text size setting on iPhone/iPad.
+/* MyGarage — a clean utility for finding a tool and getting to its manual,
+   parts and log. Built on Apple's Human Interface Guidelines (iOS 17/18) so it
+   feels at home on the Home Screen: semantic colors, the Dynamic Type scale,
+   the user's text size setting. Color is kept for meaning (links, actions,
+   warnings); icons are monochrome. Titles and tool names use Barlow Condensed,
+   model numbers, serials, part numbers and dates use the monospace face.
 
    Layout: < 1024px  → iPhone/iPad style: nav bar + bottom tab bar.
            >= 1024px → iPad landscape/Mac style: sidebar + content. */
+
+/* Barlow Condensed (SIL OFL 1.1, vendor/barlow/OFL.txt), Latin subset, saved
+   with the app so titles look the same offline. */
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url("/static/vendor/barlow/barlow-condensed-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url("/static/vendor/barlow/barlow-condensed-700.woff2") format("woff2"); }
 
 /* ------------------------------------------------------------------ color tokens */
 :root {
@@ -17,16 +25,18 @@
   --tertiary-label: rgba(60, 60, 67, .30);
   --quaternary-label: rgba(60, 60, 67, .18);
   /* Backgrounds (grouped style, like Settings) */
-  --bg: #F2F2F7;              /* systemGroupedBackground */
+  --bg: #F2F2F0;              /* grouped background, neutral rather than blue-gray */
   --cell: #FFFFFF;            /* secondarySystemGroupedBackground */
-  --cell-2: #F2F2F7;          /* tertiarySystemGroupedBackground */
+  --cell-2: #F2F2F0;
   --cell-pressed: #D1D1D6;    /* systemGray4: row highlight */
   --fill: rgba(118, 118, 128, .12);   /* tertiarySystemFill: search field */
   --fill-2: rgba(120, 120, 128, .16); /* secondarySystemFill */
   --separator: rgba(60, 60, 67, .29);
   --bar: rgba(249, 249, 249, .94);    /* chrome material (nav/tab bar) */
   --bar-border: rgba(0, 0, 0, .3);
-  --sidebar: #F2F2F7;
+  --sidebar: #F2F2F0;
+  --tag: #1D1D1F;             /* label-maker tag: model numbers without a photo */
+  --tag-ink: #F5F5F3;
   /* System colors for icon tiles and status */
   --red: #FF3B30; --orange: #FF9500; --yellow: #FFCC00; --green: #34C759;
   --mint: #00C7BE; --teal: #30B0C7; --cyan: #32ADE6; --blue: #007AFF;
@@ -36,6 +46,7 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-rounded: ui-rounded, -apple-system, "SF Pro Rounded", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "Barlow Condensed", var(--font);
   --radius: 10px;             /* inset grouped corner radius */
   --gutter: max(16px, env(safe-area-inset-left));
   --gutter-r: max(16px, env(safe-area-inset-right));
@@ -50,16 +61,18 @@
     --secondary-label: rgba(235, 235, 245, .60);
     --tertiary-label: rgba(235, 235, 245, .30);
     --quaternary-label: rgba(235, 235, 245, .16);
-    --bg: #000000;
-    --cell: #1C1C1E;
-    --cell-2: #2C2C2E;
+    --bg: #0C0C0D;
+    --cell: #1A1A1C;
+    --cell-2: #28282B;
     --cell-pressed: #3A3A3C;
     --fill: rgba(118, 118, 128, .24);
     --fill-2: rgba(120, 120, 128, .32);
     --separator: rgba(84, 84, 88, .65);
     --bar: rgba(29, 29, 29, .94);
     --bar-border: rgba(255, 255, 255, .15);
-    --sidebar: #1C1C1E;
+    --sidebar: #0C0C0D;
+    --tag: #F2F2F0;
+    --tag-ink: #1D1D1F;
     --red: #FF453A; --orange: #FF9F0A; --yellow: #FFD60A; --green: #30D158;
     --mint: #63E6E2; --teal: #40C8E0; --cyan: #64D2FF; --blue: #0A84FF;
     --indigo: #5E5CE6; --purple: #BF5AF2; --pink: #FF375F; --brown: #AC8E68; --gray: #8E8E93;
@@ -156,7 +169,7 @@ svg[aria-hidden] { stroke-width: 2; }
 .back:active, .nav-btn:active { opacity: .35; }
 
 .large-title { padding: 2px 4px 10px; }
-.large-title h1 { font-size: 2rem; font-weight: 700; letter-spacing: .011em; line-height: 1.2; }
+.large-title h1 { font-family: var(--font-display); font-size: 2.353rem; font-weight: 700; letter-spacing: .005em; line-height: 1.1; text-wrap: balance; }
 .large-title p { margin-top: 2px; }
 
 /* ------------------------------------------------------------------ tab bar (iPhone, iPad portrait) */
@@ -194,21 +207,21 @@ svg[aria-hidden] { stroke-width: 2; }
     padding: max(14px, env(safe-area-inset-top)) 12px 16px max(12px, env(safe-area-inset-left));
     background: var(--sidebar); border-right: .5px solid var(--separator);
   }
-  .sidebar-title { font-size: 1.647rem; font-weight: 700; padding: 6px 10px 10px; display: flex; align-items: center; gap: 10px; color: var(--label); letter-spacing: .01em; }
+  .sidebar-title { font-family: var(--font-display); font-size: 1.882rem; font-weight: 700; padding: 6px 10px 10px; display: flex; align-items: center; gap: 10px; color: var(--label); letter-spacing: .01em; }
   .sidebar-title img { width: 34px; height: 34px; border-radius: 8px; }
   .sidebar .searchbar { margin: 0 0 10px; }
   .sidebar a.side-item {
     display: flex; align-items: center; gap: 12px; padding: 0 10px; min-height: 40px; border-radius: 10px;
     color: var(--label); font-size: 1rem;
   }
-  .sidebar a.side-item svg { width: 22px; height: 22px; color: var(--tint); }
+  .sidebar a.side-item svg { width: 20px; height: 20px; color: var(--secondary-label); }
   .sidebar a.side-item:hover { background: var(--fill); }
-  .sidebar a.side-item[aria-current] { background: var(--tint); color: #fff; }
-  .sidebar a.side-item[aria-current] svg { color: #fff; }
+  .sidebar a.side-item[aria-current] { background: var(--cell); font-weight: 600; box-shadow: 0 0 0 .5px var(--separator); }
+  .sidebar a.side-item[aria-current] svg { color: var(--tint); }
   .sidebar .side-head { font-size: .765rem; font-weight: 600; color: var(--secondary-label); padding: 16px 10px 4px; }
   .sidebar .side-foot { margin-top: auto; padding: 10px; }
 }
-@media (min-width: 1024px) and (prefers-color-scheme: dark) { .sidebar { background: #1C1C1E; } .sidebar .searchbar input { background: rgba(118,118,128,.24); } }
+@media (min-width: 1024px) and (prefers-color-scheme: dark) { .sidebar .searchbar input { background: rgba(118,118,128,.24); } }
 
 /* ------------------------------------------------------------------ search bar */
 .searchbar { position: relative; display: block; margin: 0 0 18px; }
@@ -228,11 +241,12 @@ svg[aria-hidden] { stroke-width: 2; }
   padding: 0 16px 7px; font-size: .765rem; line-height: 1.3; text-transform: uppercase;
   color: var(--secondary-label); letter-spacing: -.005em;
 }
-.section-header.prominent {           /* iOS "prominent" header: Title 3, label color */
-  padding: 0 4px 8px; text-transform: none; font-size: 1.176rem; font-weight: 700; color: var(--label); letter-spacing: -.024em;
+.section-header.prominent {           /* section title: display face, label color */
+  padding: 0 4px 8px; text-transform: none; font-family: var(--font-display); font-size: 1.412rem; font-weight: 700; color: var(--label); letter-spacing: .005em;
   display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
 }
-.section-header.prominent a { font-size: 1rem; font-weight: 400; letter-spacing: -.024em; }
+.section-header.prominent a { font-family: var(--font); font-size: 1rem; font-weight: 400; letter-spacing: -.024em; }
+.section-header .count { font-family: var(--mono); font-size: .765rem; font-weight: 500; color: var(--secondary-label); margin-left: 4px; letter-spacing: 0; }
 .section-footer { padding: 7px 16px 0; font-size: .765rem; line-height: 1.33; color: var(--secondary-label); }
 
 .group { background: var(--cell); border-radius: var(--radius); overflow: hidden; }
@@ -277,9 +291,9 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
 /* Settings-style rounded-square icon tiles */
 .tile {
   flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px;
-  background: var(--tile, var(--gray)); color: #fff;
+  background: var(--fill); color: var(--label);
 }
-.tile svg { width: 18px; height: 18px; stroke-width: 2.3; }
+.tile svg { width: 18px; height: 18px; stroke-width: 2; }
 .thumb { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--fill); display: grid; place-items: center; color: var(--tertiary-label); }
 .thumb svg { width: 22px; height: 22px; stroke-width: 1.6; }
 .file-tile { flex: 0 0 auto; width: 30px; height: 38px; display: grid; place-items: end center; padding-bottom: 5px; box-sizing: border-box;
@@ -300,46 +314,87 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
   .gallery { margin: 4px 0 16px; }
   .slides { border-radius: 12px; }
 }
-.hero { padding: 0 4px 16px; }
-.hero h1 { font-size: 1.647rem; font-weight: 700; letter-spacing: .013em; line-height: 1.2; }
-.hero .t-subhead { margin-top: 3px; }
-.chips { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
-.pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; background: var(--fill); color: var(--secondary-label); font-size: .765rem; font-weight: 600; letter-spacing: 0; }
-.pill.tinted { background: color-mix(in srgb, var(--tile, var(--tint)) 15%, transparent); color: var(--tile, var(--tint)); }
-/* Contacts-style action buttons */
-.actions-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin: 0 0 30px; }
-.action-btn {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 58px; padding: 8px 4px;
-  border-radius: 10px; background: var(--cell); color: var(--tint); border: 0; cursor: pointer;
-  font-size: .706rem; font-weight: 500; letter-spacing: 0; -webkit-user-select: none; user-select: none;
+.hero { padding: 2px 4px 18px; }
+.hero .eyebrow { font-size: .765rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--secondary-label); margin-bottom: 2px; }
+.hero h1 { font-family: var(--font-display); font-size: 2.118rem; font-weight: 700; letter-spacing: .005em; line-height: 1.08; text-wrap: balance; }
+.hero .t-subhead { margin-top: 4px; }
+.hero-meta { margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.serial { font-family: var(--mono); font-size: .765rem; color: var(--secondary-label); letter-spacing: 0; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; background: var(--fill); color: var(--secondary-label); font-size: .765rem; font-weight: 600; letter-spacing: 0; }
+.pill.warn { background: color-mix(in srgb, var(--orange) 16%, transparent); color: color-mix(in srgb, var(--orange) 70%, var(--label)); }
+
+/* Model number as a label-maker tag: dark tape, condensed caps. */
+.tag {
+  display: inline-block; max-width: 100%; box-sizing: border-box; padding: 2px 8px 1px; border-radius: 4px;
+  background: var(--tag); color: var(--tag-ink); font-family: var(--font-display); font-weight: 600; font-size: .941rem;
+  letter-spacing: .06em; text-transform: uppercase; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.action-btn svg { width: 21px; height: 21px; }
-.action-btn:active { background: var(--cell-pressed); }
 
-/* ------------------------------------------------------------------ summary cards (Health style) */
-.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 32px; }
-.card { display: flex; flex-direction: column; gap: 6px; padding: 11px 13px 12px; border-radius: 12px; background: var(--cell); color: var(--label); min-width: 0; }
-.card:active { background: var(--cell-pressed); }
-.card-head { display: flex; align-items: center; gap: 6px; font-size: .882rem; font-weight: 600; color: var(--tile, var(--tint)); }
-.card-head svg { width: 17px; height: 17px; stroke-width: 2.4; }
-.card-head .chev { margin-left: auto; }
-.card-value { font-family: var(--font-rounded); font-size: min(1.647rem, 7vw); font-weight: 700; letter-spacing: .01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-value small { font-family: var(--font); font-size: .882rem; font-weight: 500; color: var(--secondary-label); margin-left: 3px; letter-spacing: -.015em; }
-@media (min-width: 720px) { .cards { grid-template-columns: repeat(4, 1fr); } }
+/* Task buttons under a tool's name: the reasons to open this page. */
+.actions-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin: 0 0 32px; }
+.action-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 60px; padding: 8px 4px;
+  border-radius: 12px; background: var(--cell); color: var(--label); border: 0; cursor: pointer;
+  font-size: .765rem; font-weight: 600; letter-spacing: 0; -webkit-user-select: none; user-select: none;
+  box-shadow: 0 0 0 .5px var(--separator); transition: transform .12s cubic-bezier(.23, 1, .32, 1);
+}
+.action-btn svg { width: 21px; height: 21px; color: var(--tint); }
+.action-btn.primary { background: var(--tint); color: #fff; box-shadow: none; }
+.action-btn.primary svg { color: #fff; }
+.action-btn:active { transform: scale(.97); background: var(--cell-pressed); }
+.action-btn.primary:active { background: var(--tint-pressed); }
 
-/* Horizontal shelf of photos (App Store style) */
-.shelf { display: grid; grid-auto-flow: column; grid-auto-columns: 40%; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
-  margin: 0 calc(-1 * var(--gutter-r)) 32px calc(-1 * var(--gutter)); padding: 0 var(--gutter-r) 4px var(--gutter); scroll-padding: 0 var(--gutter); scrollbar-width: none; }
-.shelf::-webkit-scrollbar { display: none; }
-@media (min-width: 600px) { .shelf { grid-auto-columns: 28%; } }
-@media (min-width: 720px) { .shelf { margin-left: 0; margin-right: 0; padding: 0 0 4px; grid-auto-columns: 23%; } }
-.shelf a { scroll-snap-align: start; color: var(--label); min-width: 0; }
-.shelf img, .shelf .noimg { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; background: var(--cell); }
-.shelf .noimg { display: grid; place-items: center; color: var(--tertiary-label); }
-.shelf .noimg svg { width: 40%; height: 40%; }
-.shelf strong { display: block; margin-top: 7px; font-size: .882rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.015em; }
-.shelf span { display: block; font-size: .765rem; color: var(--secondary-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.shelf a:active img { opacity: .8; }
+/* ------------------------------------------------------------------ home: finder, shortcuts, tool grid */
+.finder { position: relative; margin: 6px 0 12px; }
+.finder svg { position: absolute; left: 14px; top: 50%; width: 20px; height: 20px; transform: translateY(-50%); color: var(--secondary-label); stroke-width: 2.2; pointer-events: none; }
+.finder input {
+  width: 100%; height: 52px; box-sizing: border-box; padding: 0 14px 0 44px; border: 0; border-radius: 14px;
+  background: var(--cell); color: var(--label); box-shadow: 0 0 0 .5px var(--separator), 0 1px 2px rgba(0, 0, 0, .04);
+  font: inherit; font-size: max(17px, 1.059rem); letter-spacing: -.02em; -webkit-appearance: none; appearance: none;
+}
+.finder input::placeholder { color: var(--secondary-label); }
+.finder input:focus { outline: none; box-shadow: 0 0 0 2px var(--tint); }
+.finder input::-webkit-search-cancel-button { cursor: pointer; }
+
+.tasks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 28px; }
+@media (min-width: 560px) { .tasks { display: flex; } }
+.tasks a {
+  min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 99px; white-space: nowrap;
+  background: var(--fill); color: var(--label); font-size: .882rem; font-weight: 500; letter-spacing: -.01em;
+}
+.tasks a:active { background: var(--fill-2); }
+.tasks svg { flex: 0 0 auto; width: 17px; height: 17px; color: var(--secondary-label); }
+.tasks small { font-family: var(--mono); font-size: .765rem; color: var(--secondary-label); letter-spacing: 0; }
+
+.tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
+@media (min-width: 560px) { .tool-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .tool-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.tool-grid a { color: var(--label); min-width: 0; }
+.tool-grid a[hidden] { display: none; }
+.tool-grid img, .tool-grid .noimg {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; background: var(--cell);
+  box-shadow: 0 0 0 .5px var(--separator);
+}
+.tool-grid .noimg { display: grid; place-items: center; padding: 10px; box-sizing: border-box; }
+.tool-grid strong { display: block; margin-top: 6px; font-size: .824rem; font-weight: 600; line-height: 1.25; letter-spacing: -.01em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tool-grid span:not(.tag):not(.noimg) { display: block; font-size: .765rem; color: var(--secondary-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-grid a:active img, .tool-grid a:active .noimg { opacity: .75; }
+@media (hover: hover) { .tool-grid a:hover strong { color: var(--tint); } }
+
+.search-all {
+  display: flex; align-items: center; gap: 12px; margin: -14px 0 32px; padding: 12px 16px; border-radius: var(--radius);
+  background: var(--cell); color: var(--tint); font-size: .941rem;
+}
+.search-all[hidden] { display: none; }
+.search-all > svg { width: 18px; height: 18px; flex: 0 0 auto; }
+.search-all > span:not(.chev) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-all b { font-weight: 600; }
+[data-filter-group][hidden] + .search-all { margin-top: 0; }
+
+/* Dates in logs: monospace so they line up. */
+.row-date, .row-sub.date { font-family: var(--mono); font-size: .765rem; color: var(--secondary-label); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.row-date { flex: 0 0 auto; }
 
 /* ------------------------------------------------------------------ Reminders-style checklist */
 .check {

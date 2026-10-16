@@ -30,6 +30,7 @@ const PRECACHE = [
   "/static/vendor/pdfjs/pdf.min.js", "/static/vendor/pdfjs/pdf.worker.min.js",
   "/static/vendor/three/three.module.min.js", "/static/vendor/three/STLLoader.js",
   "/static/vendor/three/OrbitControls.js", "/manifest.webmanifest",
+  "/static/vendor/barlow/barlow-condensed-600.woff2", "/static/vendor/barlow/barlow-condensed-700.woff2",
 ];
 
 self.addEventListener("install", (e) => {

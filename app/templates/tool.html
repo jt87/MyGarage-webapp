@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import icon, file_rows, kv, cons_row, tool_row %}
+{% from "macros.html" import icon, file_rows, kv, cons_row, tool_row, tag %}
 {% block nav_actions %}
 {% if editable %}<a class="nav-btn text" href="{{ t.url }}/edit">Edit</a>{% endif %}
 <button class="nav-btn" type="button" data-share data-share-title="{{ t.title }}" aria-label="Share">{{ icon("share") }}</button>
@@ -20,42 +20,28 @@
 {% endif %}
 
 <div class="hero">
+  <p class="eyebrow">{{ t.category }}</p>
   <h1 data-title>{{ t.model_name }}</h1>
   {% if t.subtitle %}<p class="t-subhead secondary">{{ t.subtitle }}</p>{% endif %}
-  <div class="chips">
-    <a class="pill tinted" style="--tile: var(--orange)" href="/tools">{{ t.category }}</a>
-    {% if t.value_text %}<span class="pill tinted" style="--tile: var(--green)">{{ t.value_text }}</span>{% endif %}
-    {% if not t.proofs %}<span class="pill">No receipt</span>{% endif %}
+  {% if t.model_no or t.serial or not t.proofs %}
+  <div class="hero-meta">
+    {% if t.model_no %}{{ tag(t.model_no) }}{% endif %}
+    {% if t.serial %}<span class="serial selectable">S/N {{ t.serial }}</span>{% endif %}
+    {% if not t.proofs %}<a class="pill warn" href="#purchase">No receipt</a>{% endif %}
   </div>
+  {% endif %}
 </div>
 
 {% if editable %}<div class="section outbox" data-outbox="{{ t.url }}" hidden></div>{% endif %}
 
+{# What people come here to do, in the order they do it. #}
 <div class="actions-row">
   {% if t.manuals %}<a class="action-btn" href="/view/{{ t.manuals[0].path|q }}">{{ icon("book-open") }}Manual</a>{% endif %}
   {% if t.consumables %}<a class="action-btn" href="#parts">{{ icon("shopping-cart") }}Parts</a>{% endif %}
-  <a class="action-btn" href="#purchase">{{ icon("credit-card") }}{{ 'Receipt' if t.proofs else 'Purchase' }}</a>
+  {% if editable %}<a class="action-btn primary" href="{{ t.url }}/log">{{ icon("edit-2") }}Log Work</a>
+  {% elif t.log %}<a class="action-btn" href="#log">{{ icon("clock") }}Log</a>{% endif %}
   {% if t.documents or t.manuals|length > 1 or t.other_files %}<a class="action-btn" href="#documents">{{ icon("file-text") }}Docs</a>{% endif %}
-  {% if editable %}<a class="action-btn" href="{{ t.url }}/add">{{ icon("image") }}Add Photo</a>{% endif %}
-</div>
-
-<div class="section" id="details">
-  <div class="section-header">Details</div>
-  <div class="group">
-    {% for label, html in t.specs %}{{ kv(label, html) }}{% endfor %}
-  </div>
-</div>
-
-<div class="section" id="purchase">
-  <div class="section-header">Purchase &amp; Insurance</div>
-  <div class="group">
-    {% if t.purchased_html %}{{ kv("Purchased", t.purchased_html) }}{% endif %}
-    {% if t.paid_text %}{{ kv("Paid", t.paid_text|e) }}{% endif %}
-    {% if t.replacement_html %}{{ kv("Replacement Value", t.replacement_html) }}{% endif %}
-    {{ file_rows(t.proofs) }}
-    {% if editable %}<a class="row action" href="{{ t.url }}/add?kind=receipt">{{ icon("plus", "lead-ic") }}Add Receipt</a>{% endif %}
-  </div>
-  {% if not t.proofs %}<p class="section-footer">No proof of purchase on file.{% if editable %} Add a scan or a photo of the receipt.{% else %} Add a scan or photo named <code>receipt.pdf</code> or <code>receipt.jpg</code> to this tool's folder.{% endif %}</p>{% endif %}
+  {% if editable %}<a class="action-btn" href="{{ t.url }}/add">{{ icon("image") }}Photo</a>{% endif %}
 </div>
 
 {% if t.consumables %}
@@ -78,6 +64,27 @@
 </div>
 {% endif %}
 
+{% if t.log or editable %}
+<div class="section" id="log">
+  <div class="section-header">Maintenance Log</div>
+  <div class="group">
+    {% for e in t.log %}
+    {% if editable %}<a class="row" href="{{ t.url }}/log/{{ loop.index0 }}"><span class="row-body"><span class="row-sub date">{{ e.date }}</span><span class="row-title">{{ e.what }}</span></span><span class="chev"></span></a>
+    {% else %}<div class="row selectable"><span class="row-body"><span class="row-sub date">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>{% endif %}
+    {% endfor %}
+    {% if editable %}<a class="row action" href="{{ t.url }}/log">{{ icon("plus", "lead-ic") }}Log Maintenance</a>{% endif %}
+  </div>
+  {% if t.log_notes_html %}<div class="section-footer">{{ t.log_notes_html|striptags }}</div>{% endif %}
+</div>
+{% endif %}
+
+<div class="section" id="details">
+  <div class="section-header">Details</div>
+  <div class="group">
+    {% for label, html in t.specs %}{{ kv(label, html) }}{% endfor %}
+  </div>
+</div>
+
 {% for title, html in t.sections_html %}
 <div class="section" id="{{ title|lower|replace(' & ','-')|replace(' ','-') }}">
   <div class="section-header">{{ title }}</div>
@@ -85,19 +92,17 @@
 </div>
 {% endfor %}
 
-{% if t.log or editable %}
-<div class="section" id="log">
-  <div class="section-header">Maintenance Log</div>
+<div class="section" id="purchase">
+  <div class="section-header">Purchase &amp; Insurance</div>
   <div class="group">
-    {% for e in t.log %}
-    {% if editable %}<a class="row" href="{{ t.url }}/log/{{ loop.index0 }}"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what }}</span></span><span class="chev"></span></a>
-    {% else %}<div class="row selectable"><span class="row-body"><span class="row-sub num">{{ e.date }}</span><span class="row-title">{{ e.what_html|safe }}</span></span></div>{% endif %}
-    {% endfor %}
-    {% if editable %}<a class="row action" href="{{ t.url }}/log">{{ icon("plus", "lead-ic") }}Log Maintenance</a>{% endif %}
+    {% if t.purchased_html %}{{ kv("Purchased", t.purchased_html) }}{% endif %}
+    {% if t.paid_text %}{{ kv("Paid", t.paid_text|e) }}{% endif %}
+    {% if t.replacement_html %}{{ kv("Replacement Value", t.replacement_html) }}{% endif %}
+    {{ file_rows(t.proofs) }}
+    {% if editable %}<a class="row action" href="{{ t.url }}/add?kind=receipt">{{ icon("plus", "lead-ic") }}Add Receipt</a>{% endif %}
   </div>
-  {% if t.log_notes_html %}<div class="section-footer">{{ t.log_notes_html|striptags }}</div>{% endif %}
+  {% if not t.proofs %}<p class="section-footer">No proof of purchase on file.{% if editable %} Add a scan or a photo of the receipt.{% else %} Add a scan or photo named <code>receipt.pdf</code> or <code>receipt.jpg</code> to this tool's folder.{% endif %}</p>{% endif %}
 </div>
-{% endif %}
 
 {% if t.projects %}
 <div class="section">
