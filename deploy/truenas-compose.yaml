@@ -4,7 +4,7 @@
 # (on this server, or in a GitHub repo). See README.md for the walkthrough.
 services:
   mygarage:
-    image: ghcr.io/jt87/mygarage:latest
+    image: ghcr.io/jt87/mygarage:1
     container_name: mygarage
     restart: unless-stopped
     user: "568:568"            # TrueNAS "apps" user; owns the data folder below

@@ -63,7 +63,7 @@ To update the app later, open it in Apps and choose Update (or Pull Image, then 
 
 A TrueNAS Cron Job can install new releases at 3 AM. It only installs releases with the same first number (1.2, 1.3, …), which never need anything from you. A release that does (2.0) is never installed on its own; the app shows a notice with what to do instead. If a new version doesn't start, the previous one is put back and that version is skipped until the next release. Settings → About shows the last run.
 
-1. **Follow the major version.** Apps → mygarage → Edit, and change the image to `ghcr.io/jt87/mygarage:1` (available from 1.2.0). An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, is never changed.
+1. **Follow the major version.** Apps → mygarage → Edit, and change the image to `ghcr.io/jt87/mygarage:1`. An image pinned to one version, like `1.2.0` or `sha-9c82cf5`, is never changed.
 2. **Save the script on a pool.** In System → Shell:
    ```
    mkdir -p /mnt/tank/scripts
