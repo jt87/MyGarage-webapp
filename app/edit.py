@@ -311,26 +311,57 @@ def merge_value(name: str, base, mine, current):
 
 def merge_specs(base: list[tuple[str, str]], mine: list[tuple[str, str]],
                 current: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Merge key/value rows by key (case-insensitive), keeping the file's order."""
-    norm = lambda rows: {k.strip().lower(): (k, v) for k, v in rows}
-    b, m, c = norm(base), norm(mine), norm(current)
-    out: dict[str, tuple[str, str] | None] = dict(c)
-    for key in list(dict.fromkeys([*c, *m, *b])):
-        result = merge_value(f"“{(m.get(key) or c.get(key) or b.get(key))[0]}”",
-                             b.get(key), m.get(key), c.get(key))
-        out[key] = result
-    # New rows from the form go where the form put them (after the row before them).
-    order = list(c)
-    mine_keys = list(m)
-    for idx, key in enumerate(mine_keys):
-        if key in order:
-            continue
-        prev = next((k for k in reversed(mine_keys[:idx]) if k in order), None)
-        order.insert(order.index(prev) + 1 if prev else len(order), key)
-    return [out[k] for k in order if out.get(k)]
+    """Merge key/value rows by label (case-insensitive), keeping the file's order.
+
+    Rows are grouped by label, so a repeated label (two "Battery" rows) is
+    merged as one group: changing either copy of the group is fine, but both
+    sides changing it differently is a conflict rather than a guess.
+    """
+    if list(current) == list(base):
+        return list(mine)  # nothing changed elsewhere: save the form exactly as submitted
+
+    def groups(rows):
+        out: dict[str, list[tuple[str, str]]] = {}
+        for k, v in rows:
+            out.setdefault(k.strip().lower(), []).append((k, v))
+        return out
+
+    b, m, c = groups(base), groups(mine), groups(current)
+    merged = {}
+    for label in dict.fromkeys([*c, *m, *b]):
+        name = (m.get(label) or c.get(label) or b.get(label))[0][0]
+        merged[label] = merge_value(f"“{name}”", b.get(label), m.get(label), c.get(label))
+    # Rows stay where they are in the file: each label's merged rows take that
+    # label's places in order. Extra rows go right after that label's last row,
+    # and labels new on the form go after the label before them on the form.
+    queues = {label: list(rows or []) for label, rows in merged.items()}
+    out: list[tuple[str, str]] = []
+    for k, _ in current:
+        label = k.strip().lower()
+        if queues.get(label):
+            out.append(queues[label].pop(0))
+
+    def after(label):  # index just past `label`'s last row in `out`, or None
+        hits = [i for i, (k, _) in enumerate(out) if k.strip().lower() == label]
+        return hits[-1] + 1 if hits else None
+
+    prev = None
+    for label in dict.fromkeys([*m, *c]):
+        for row in queues.get(label, []):
+            at = after(label)
+            if at is None:
+                at = after(prev) if prev is not None else None
+            out.insert(len(out) if at is None else at, row)
+        if after(label) is not None:
+            prev = label
+    return out
 
 
 # --------------------------------------------------------------------------- new tools & files
+
+# Folder names that would collide with the app's own pages (/tools/new and so on).
+RESERVED_SLUGS = {"new", "index", "readme"}
+
 
 def slugify(text: str) -> str:
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()

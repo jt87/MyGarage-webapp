@@ -92,6 +92,7 @@ async def manage_files(request: Request, kind: str):
             src.unlink()
             return [f"{rel}/{old}"]
         existing = {p.name for p in folder.iterdir()} - {old}
+        renamed: list[tuple[str, str]] = []  # (old name, new name), for README links
         if action == "cover":
             target = "photo" + Path(old).suffix.lower().replace(".jpeg", ".jpg")
             changed = []
@@ -101,9 +102,10 @@ async def manage_files(request: Request, kind: str):
                     p.rename(folder / moved)
                     existing.discard(p.name)
                     existing.add(moved)
+                    renamed.append((p.name, moved))
                     changed += [f"{rel}/{p.name}", f"{rel}/{moved}"]
-            if old == target:
-                return changed
+            if old == target and not renamed:
+                return []
             dest = target
         elif action == "rename":
             if kind == "tool" and new_kind in FILE_KINDS and new_kind != str(form.get("old_kind", "")):
@@ -122,11 +124,17 @@ async def manage_files(request: Request, kind: str):
             changed = []
         else:
             raise edit.Invalid("Choose what to do with the file.")
-        src.rename(folder / dest)
-        changed += [f"{rel}/{old}", f"{rel}/{dest}"]
+        if dest != old:
+            src.rename(folder / dest)
+            changed += [f"{rel}/{old}", f"{rel}/{dest}"]
+            renamed.append((old, dest))
         if readme.exists():
             text = m.read_text(readme)
-            new_text = edit.rewrite_links(text, old, dest)
+            new_text = text
+            # In rename order: the displaced cover's links move first, then the new
+            # cover's links take over its old name.
+            for before, after in renamed:
+                new_text = edit.rewrite_links(new_text, before, after)
             if new_text != text:
                 m.write_text(readme, new_text)
                 changed.append(f"{rel}/README.md")
@@ -332,14 +340,20 @@ async def markdown(request: Request):
     """Edit a page's Markdown as text, for anything the forms don't cover."""
     rel, url, back_link, label = markdown_target(request)
     back = request.url.path
+    # Only reference pages are deleted here; tools and projects from their Edit screen.
+    can_delete = rel.startswith("reference/") and rel != "reference/README.md"
     if request.method == "GET":
         text = m.read_text(m.REPO_PATH / rel)
         return m.render(request, "edit_markdown.html", rel=rel, label=label, text=text,
                         base=m.text_hash(text), action=back, done=url,
-                        delete=rel.startswith("reference/") and rel != "reference/README.md",
+                        delete=can_delete,
                         back=back_link, title=Path(rel).name)
     form = await request.form()
     if form.get("action") == "delete":
+        if not can_delete:
+            return m.edit_failed(request, back, "Only reference pages can be deleted here. "
+                                 "Delete a tool or project from its Edit screen.", 400)
+
         def remove(root: Path) -> list[str]:
             (root / rel).unlink(missing_ok=True)
             return [rel]
@@ -380,7 +394,7 @@ async def reference_new(request: Request):
     def mutate(root: Path) -> list[str]:
         base_slug = edit.slugify(title) or "page"
         slug, n = base_slug, 2
-        while (root / "reference" / f"{slug}.md").exists() or slug in ("index", "readme", "new"):
+        while (root / "reference" / f"{slug}.md").exists() or slug in edit.RESERVED_SLUGS:
             slug, n = f"{base_slug}-{n}", n + 1
         created["slug"] = slug
         m.write_text(root / "reference" / f"{slug}.md", f"# {edit.cell(title)}\n\n{body}\n")

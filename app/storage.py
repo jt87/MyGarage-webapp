@@ -37,8 +37,21 @@ class StorageConfig:
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as e:
-            log.warning("could not read %s: %s", path, e)
+            # Guessing would run the garage the wrong way (no history, no backup);
+            # stopping says exactly what to fix.
+            raise RuntimeError(f"Can't read MyGarage's storage settings in {path} ({e}). "
+                               "Fix or remove that file and restart.") from e
         if self.env_locked:
+            if not self.data.get("from_env_github"):
+                # Remember that the folder is this app's own copy of a GitHub repo,
+                # so if GIT_REPO_URL is removed later it carries on as this
+                # server's garage instead of a plain folder. (Only the marker is
+                # saved; the YAML's URL and token stay out of the file.)
+                self.data["from_env_github"] = True
+                try:
+                    self._write(self.data)
+                except OSError as e:
+                    log.warning("could not save %s: %s", self.path, e)
             self.data.update(mode="github", url=env_url, token=env_token,
                              branch=env_branch or "main")
         elif env_branch and not self.data.get("branch"):
@@ -48,8 +61,16 @@ class StorageConfig:
     def mode(self) -> str:
         if self.data.get("mode"):
             return self.data["mode"]
-        # Installs from before the setup screen: a folder that's already there.
-        if (self.repo_path / ".git").exists():
+        if self.data.get("needs_setup"):
+            return ""  # a first-run setup failed partway: show the setup screen again
+        # Installs from before the setup screen (or a setup that didn't finish):
+        # a folder that's already there is read as it is, never taken over.
+        # Even a git checkout stays a plain folder until someone turns on
+        # history in Settings, so the app never commits into someone's clone
+        # uninvited, and changes made to it outside the app keep showing up.
+        # This app's own copy of a GitHub repo (set up by GIT_REPO_URL, since
+        # removed) carries on as this server's garage.
+        if (self.repo_path / ".git").exists() and self.data.get("from_env_github"):
             return "server"
         if (self.repo_path / "README.md").exists():
             return "folder"
@@ -65,19 +86,23 @@ class StorageConfig:
         return self.env_webhook_secret or (self.data.get("webhook_secret", "") if self.url else "")
 
     def set(self, **values) -> None:
-        self.data.update(values)
-        if self.data.get("url") and not self.data.get("webhook_secret"):
-            self.data["webhook_secret"] = secrets.token_hex(32)
-        self.save()
+        """Save the new values, then use them (so a failed save changes nothing)."""
+        data = {**self.data, **values}
+        if data.get("mode"):
+            data.pop("needs_setup", None)
+        if data.get("url") and not data.get("webhook_secret"):
+            data["webhook_secret"] = secrets.token_hex(32)
+        if not self.env_locked:
+            self._write(data)
+        self.data = data
 
-    def save(self) -> None:
-        if self.env_locked:
-            return
+    def _write(self, data: dict) -> None:
+        """Raises OSError, so a setting that couldn't be saved isn't reported as saved."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
-            json.dump({k: v for k, v in self.data.items()}, f, indent=2)
+            json.dump(data, f, indent=2)
         tmp.replace(self.path)
 
 

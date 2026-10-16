@@ -92,6 +92,7 @@
       {% elif sync.mode == "server" %}
       <button class="row action" name="action" value="primary_github" data-confirm="Make GitHub the primary copy? Everything here is sent first; this server then keeps a copy of GitHub.">Make GitHub the Primary Copy</button>
       <button class="row action" name="action" value="token">Replace Token</button>
+      <button class="row action destructive" name="action" value="disconnect" data-confirm="Stop backing up to GitHub? Nothing is deleted there.">Disconnect GitHub Backup</button>
       {% elif sync.mode == "github" %}
       <button class="row action" name="action" value="primary_server" data-confirm="Make this server the primary copy? GitHub's full history is brought here first, and GitHub stays connected as the backup.">Make This Server the Primary Copy</button>
       <button class="row action" name="action" value="token">Replace Token</button>
@@ -105,12 +106,6 @@
       {%- elif sync.mode == "server" %}Either way your garage stays here too.
       {%- else %}Turns this folder into a garage with a history of every change, so a GitHub backup can be connected.{% endif %}</p>
   </form>
-  {% if sync.mode == "server" and sync.url %}
-  <form method="post" action="/settings/storage" class="group" style="margin-top:10px">
-    <input type="hidden" name="action" value="disconnect">
-    <button class="row action destructive" onclick="return confirm('Stop backing up to GitHub? Nothing is deleted there.')">Disconnect GitHub Backup</button>
-  </form>
-  {% endif %}
   {% endif %}
   {% if sync.remote and store.webhook_secret %}
   <div class="group" style="margin-top:10px">
