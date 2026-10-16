@@ -265,7 +265,8 @@ def test_a_rejected_push_during_backup_sync_is_rechecked(tmp_path, empty_remote)
         return real(*args, **kw)
 
     s._git = race
-    real("commit", "--allow-empty", "-qm", "unsent", cwd=tmp_path / "data")
+    real("-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-qm", "unsent",
+         cwd=tmp_path / "data")
     s.head = real("rev-parse", "HEAD", cwd=tmp_path / "data")
     s.sync_backup()
     assert "Waiting" in s.backup_error
