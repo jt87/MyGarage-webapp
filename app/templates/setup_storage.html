@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+{% include "_auth_head.html" %}
+<title>Set Up · {{ site_title }}</title>
+</head>
+<body class="login-body">
+<form class="login setup-storage" method="post" action="/setup/storage">
+  <img class="app-icon" src="/static/apple-touch-icon.png" alt="">
+  <h1>Where Should Your Garage Live?</h1>
+  <p class="t-subhead secondary">Your tools, photos and manuals are kept as Markdown files and PDFs, with a history of every change.</p>
+
+  <div class="group choice">
+    <label class="row"><input type="radio" name="where" value="server" {% if where not in ("github", "server_backup") %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>On This Server</strong></span><span class="row-sub">Everything stays on your server. Nothing to sign up for.</span></span></label>
+    <label class="row"><input type="radio" name="where" value="server_backup" {% if where == "server_backup" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>On This Server, Backed Up to GitHub</strong></span><span class="row-sub">Your server is the primary copy. Every change is also sent to a private GitHub repo, off-site.</span></span></label>
+    <label class="row"><input type="radio" name="where" value="github" {% if where == "github" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>GitHub as the Primary Copy</strong></span><span class="row-sub">GitHub holds the files and the server keeps a copy. Edit on GitHub or here.</span></span></label>
+  </div>
+  <p class="login-foot t-footnote secondary">You can switch between these later in Settings → Storage.</p>
+
+  <div class="when-github">
+    <div class="group">
+      <label class="row"><span class="sr-only">GitHub repo</span><input name="repo" value="{{ repo }}" placeholder="owner/my-garage" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="row"><span class="sr-only">Token</span><input name="token" type="password" placeholder="Token (needed for a private repo)" autocomplete="off"></label>
+      <label class="row"><span class="sr-only">Branch</span><input name="branch" value="{{ branch or 'main' }}" placeholder="main" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    </div>
+    <p class="login-foot t-footnote secondary">Make a token at GitHub → Settings → Developer settings → <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained tokens</a>: only this repo, Contents: Read and write. Use a private repo. An empty one is filled with the starting point below (don't tick “Add a README” when creating it); one that already has a garage is brought in as is.</p>
+  </div>
+
+  <div class="group choice">
+    <label class="row"><input type="radio" name="starter" value="empty" {% if starter != "sample" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>Start Empty</strong></span><span class="row-sub">Add your first tool with the + button.</span></span></label>
+    <label class="row"><input type="radio" name="starter" value="sample" {% if starter == "sample" %}checked{% endif %}>
+      <span class="row-body"><span class="row-title"><strong>Start With Examples</strong></span><span class="row-sub">Two made-up tools and a project, to see how it looks. Delete them anytime.</span></span></label>
+  </div>
+  <p class="login-foot t-footnote secondary">If the server's data folder already holds a garage, it's kept and this is skipped.</p>
+
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button class="btn-filled">Continue</button>
+</form>
+</body>
+</html>

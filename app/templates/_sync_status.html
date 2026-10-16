@@ -1,4 +1,8 @@
-{%- if sync.git_mode -%}
+{%- if sync.mode == "github" -%}
   {%- if sync.last_error -%}<span class="destructive">Can't reach GitHub.</span> Showing the saved copy{% if sync.head %} ({{ sync.head[:7] }}){% endif %}.
+  {%- elif not sync.head -%}Downloading from GitHub…
   {%- else -%}Up to date{% if sync.head %} · {{ sync.head[:7] }}{% endif %} · checked {{ sync.last_checked|ago }}{%- endif -%}
-{%- else -%}Reading from a mounted folder{%- endif -%}
+{%- elif sync.mode == "server" -%}
+  Saved on this server{% if sync.head %} · {{ sync.head[:7] }}{% endif %}
+  {%- if sync.url %}{% if sync.backup_error %} · <span class="destructive">GitHub backup paused</span>{% elif sync.last_backup %} · backed up to GitHub {{ sync.last_backup|ago }}{% else %} · GitHub backup connected{% endif %}{% endif -%}
+{%- else -%}Reading from a folder on this server{%- endif -%}

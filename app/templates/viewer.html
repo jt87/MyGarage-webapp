@@ -4,6 +4,7 @@
 <button class="nav-btn" type="button" data-share-file="{{ url }}" data-name="{{ name }}" aria-label="Share">{{ icon("share") }}</button>
 {% endblock %}
 {% block content %}
+<p class="viewer-offline t-footnote secondary" data-file-status="{{ url }}" hidden></p>
 {% if kind == "pdf" %}
   <div class="pdf" id="pdf" data-src="{{ url }}"><p class="pdf-loading">Loading…</p></div>
   <div class="pdf-hud" data-pdf-hud hidden>
@@ -22,10 +23,10 @@
 {% endblock %}
 {% block scripts %}
 {% if kind == "pdf" %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
-<script src="/static/pdfview.js?v=5" defer></script>
+<script src="/static/vendor/pdfjs/pdf.min.js" defer></script>
+<script src="/static/pdfview.js?v={{ v }}" defer></script>
 {% elif kind == "model" %}
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
-<script type="module" src="/static/stl.js?v=4"></script>
+<script type="importmap">{"imports":{"three":"/static/vendor/three/three.module.min.js","three/addons/loaders/STLLoader.js":"/static/vendor/three/STLLoader.js","three/addons/controls/OrbitControls.js":"/static/vendor/three/OrbitControls.js"}}</script>
+<script type="module" src="/static/stl.js?v={{ v }}"></script>
 {% endif %}
 {% endblock %}

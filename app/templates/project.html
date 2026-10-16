@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% from "macros.html" import file_rows, tool_row, kv %}
 {% set large = true %}
+{% from "macros.html" import icon %}
+{% block nav_actions %}{% if editable %}<a class="nav-btn text" href="{{ p.url }}/edit">Edit</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="large-title"><h1>{{ p.title }}</h1></div>
 <div class="section">
@@ -10,10 +12,12 @@
     {% if p.finished %}<div class="row"><span class="row-body">Finished</span><span class="row-detail">{{ p.finished }}</span></div>{% endif %}
   </div>
 </div>
-{% if p.files %}
+{% if p.files or editable %}
 <div class="section">
   <div class="section-header">Files</div>
-  <div class="group">{{ file_rows(p.files) }}</div>
+  <div class="group">{{ file_rows(p.files) }}
+    {% if editable %}<a class="row action" href="{{ p.url }}/add">{{ icon("plus", "lead-ic") }}Add Files</a>{% endif %}
+  </div>
 </div>
 {% endif %}
 {% if used %}
@@ -26,7 +30,9 @@
   <div class="section-header">Notes</div>
   <div class="prose">{{ p.html|safe }}</div>
 </div>
-{% if github_repo %}
-<div class="section"><div class="group"><a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/projects/{{ p.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span></a></div></div>
-{% endif %}
+<div class="section"><div class="group">
+  {% if editable %}<a class="row" href="/edit/projects/{{ p.slug }}"><span class="row-body">Edit Notes</span><span class="chev"></span></a>{% endif %}
+  {% if sync.versioned %}<a class="row" href="{{ p.url }}/history"><span class="row-body">History</span><span class="chev"></span></a>{% endif %}
+  {% if github_repo %}<a class="row action" href="https://github.com/{{ github_repo }}/edit/{{ branch }}/projects/{{ p.slug }}/README.md" target="_blank" rel="noopener"><span class="row-body">Edit on GitHub</span></a>{% endif %}
+</div></div>
 {% endblock %}

@@ -50,6 +50,88 @@
   <p class="section-footer">For scripts and shortcuts: send it as an <code>X-Api-Key</code> header. For example, an iOS Shortcut can download <code>/insurance.csv</code> with it.</p>
 </div>
 
+<div class="section" id="storage">
+  <div class="section-header">Storage</div>
+  <div class="group">
+    {% if sync.mode == "github" %}
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">Primary Copy: GitHub</span><span class="row-sub clip">{{ github_repo or sync.url }} · {{ sync.branch }}</span></span></div>
+    <div class="row has-icon">{{ tile("box", "indigo") }}<span class="row-body"><span class="row-title">This Server</span><span class="row-sub">Keeps a copy of GitHub's latest version</span></span></div>
+    {% elif sync.mode == "server" %}
+    <div class="row has-icon">{{ tile("box", "indigo") }}<span class="row-body"><span class="row-title">Primary Copy: This Server</span><span class="row-sub">With a history of every change</span></span></div>
+    {% if sync.url %}
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub Backup</span><span class="row-sub clip">{{ github_repo or sync.url }}</span>
+      <span class="row-sub {{ 'destructive' if sync.backup_error }}">{{ sync.backup_error or ('Last backup ' ~ (sync.last_backup|ago)) }}</span></span></div>
+    {% else %}
+    <div class="row has-icon">{{ tile("github", "gray") }}<span class="row-body"><span class="row-title">GitHub Backup</span><span class="row-sub">Not connected</span></span></div>
+    {% endif %}
+    {% else %}
+    <div class="row has-icon">{{ tile("folder", "brown") }}<span class="row-body"><span class="row-title">Folder on This Server</span><span class="row-sub">{{ store.repo_path }} · no history</span></span></div>
+    {% endif %}
+  </div>
+
+  {% if store.env_locked %}
+  <p class="section-footer">Set in the app's YAML (<code>GIT_REPO_URL</code>). Remove it there to manage storage here.</p>
+  {% else %}
+  <form method="post" action="/settings/storage" class="storage-form" data-confirm-actions>
+    {% if sync.mode == "server" and not sync.url %}
+    <p class="section-footer">Connect a GitHub repo to back up off-site, or to make GitHub the primary copy. Create an <strong>empty private repo</strong> (don't tick “Add a README”), then a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a> for only that repo with Contents: Read and write.</p>
+    <div class="group" style="margin-top:10px">
+      <label class="row"><span class="sr-only">GitHub repo</span><input class="row-input" name="repo" placeholder="owner/my-garage" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="row"><span class="sr-only">Token</span><input class="row-input" name="token" type="password" placeholder="Token" autocomplete="off"></label>
+    </div>
+    {% elif sync.remote %}
+    <div class="group" style="margin-top:10px">
+      <label class="row"><span class="sr-only">New token</span><input class="row-input" name="token" type="password" placeholder="New Token (only to replace it)" autocomplete="off"></label>
+    </div>
+    {% endif %}
+    <div class="group" style="margin-top:10px">
+      <label class="row"><span class="sr-only">Current password</span><input class="row-input" name="current" type="password" placeholder="Current Password" autocomplete="current-password"></label>
+      {% if sync.mode == "server" and not sync.url %}
+      <button class="row action" name="action" value="connect">Connect GitHub Backup</button>
+      <button class="row action" name="action" value="primary_github" data-confirm="Send everything to GitHub and make it the primary copy? This server will then keep a copy of GitHub.">Make GitHub the Primary Copy</button>
+      {% elif sync.mode == "server" %}
+      <button class="row action" name="action" value="primary_github" data-confirm="Make GitHub the primary copy? Everything here is sent first; this server then keeps a copy of GitHub.">Make GitHub the Primary Copy</button>
+      <button class="row action" name="action" value="token">Replace Token</button>
+      <button class="row action destructive" name="action" value="disconnect" data-confirm="Stop backing up to GitHub? Nothing is deleted there.">Disconnect GitHub Backup</button>
+      {% elif sync.mode == "github" %}
+      <button class="row action" name="action" value="primary_server" data-confirm="Make this server the primary copy? GitHub's full history is brought here first, and GitHub stays connected as the backup.">Make This Server the Primary Copy</button>
+      <button class="row action" name="action" value="token">Replace Token</button>
+      {% else %}
+      <button class="row action" name="action" value="history">Keep History on This Server</button>
+      {% endif %}
+    </div>
+    <p class="section-footer">
+      {%- if sync.mode == "github" %}Switching makes this server the primary copy with GitHub's full history, and GitHub becomes its backup. Edits made on GitHub keep coming in either way.
+      {%- elif sync.mode == "server" and sync.url %}Switching sends everything to GitHub first, then GitHub becomes the primary copy. Edits made on GitHub are brought in either way. Replace the token when it expires.
+      {%- elif sync.mode == "server" %}Either way your garage stays here too.
+      {%- else %}Turns this folder into a garage with a history of every change, so a GitHub backup can be connected.{% endif %}</p>
+  </form>
+  {% endif %}
+  {% if sync.remote and store.webhook_secret %}
+  <div class="group" style="margin-top:10px">
+    <div class="row kv selectable"><span class="kv-label">Webhook URL (optional, for instant updates)</span><span class="kv-value"><code>https://&lt;your domain&gt;/webhook/github</code></span></div>
+    <div class="row has-icon">{{ tile("key", "yellow") }}<span class="row-body"><code class="api-key" data-api-key data-value="{{ store.webhook_secret }}">••••••••••••••••••••••••</code></span>
+      <button class="buy-btn" type="button" data-reveal aria-label="Show webhook secret">{{ icon("eye") }}</button></div>
+  </div>
+  <p class="section-footer">In the GitHub repo: Settings → Webhooks → Add webhook. Content type <code>application/json</code>, this secret, "Just the push event". Without it, GitHub edits show up within 5 minutes of opening the app.</p>
+  {% endif %}
+</div>
+
+{% if sync.versioned %}
+<div class="section"><div class="group"><a class="row has-icon" href="/history"><span class="tile" style="--tile: var(--gray)">{{ icon("clock") }}</span><span class="row-body">History</span><span class="row-detail">Every change, with Undo</span><span class="chev"></span></a></div></div>
+{% endif %}
+
+<div class="section" data-offline-settings>
+  <div class="section-header">This Device</div>
+  <div class="group">
+    <div class="row has-icon">{{ tile("download", "green") }}<span class="row-body">Saved for Offline</span><span class="row-detail" data-offline-usage>—</span></div>
+    <button class="row action has-icon" type="button" data-save-all>{{ tile("book-open", "red") }}<span class="row-body">Save All Manuals &amp; Files</span><span class="row-detail" data-save-all-size></span></button>
+    <button class="row action destructive has-icon" type="button" data-clear-offline>{{ tile("x", "gray") }}<span class="row-body">Remove Saved Files</span></button>
+  </div>
+  <p class="section-footer banner err" data-needs-https hidden>Offline use needs HTTPS. Open {{ site_title }} through your domain or a Tailscale HTTPS name (not <code>http://</code> and an IP address) and it will start saving pages. Everything else, including editing, works either way.</p>
+  <p class="section-footer">Every page and photo is kept on this device so {{ site_title }} works without a connection. Manuals, receipts and 3D files are kept once you open them, or all at once with Save All. Logging out removes everything saved on this device.</p>
+</div>
+
 <div class="section">
   <div class="section-header">Devices</div>
   <div class="group">

@@ -1,0 +1,8 @@
+<form method="post" action="{{ item.url }}/delete" class="section" data-edit data-label="Delete {{ kind_label }} · {{ item.slug }}" data-done="{{ '/tools' if kind_label == 'tool' else '/projects' }}">
+  <div class="section-header">Delete</div>
+  <div class="group">
+    <label class="row field"><span class="sr-only">Folder name</span><input class="row-input" name="confirm" placeholder="Type {{ item.slug }} to confirm" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+    <button class="row action destructive center" type="submit">Delete This {{ kind_label|capitalize }}</button>
+  </div>
+  <p class="section-footer">Removes the folder and everything in it{% if kind_label == "tool" %}, and its row in the inventory{% endif %}. You can undo it from Settings → History.</p>
+</form>

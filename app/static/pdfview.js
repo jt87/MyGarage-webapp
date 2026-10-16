@@ -8,11 +8,11 @@
   const bar = document.querySelector("[data-pdf-hud]");
   if (!el) return;
   const fail = () => {
-    el.innerHTML = `<p class="pdf-loading">Couldn't display this PDF.<br><a href="${el.dataset.src}" target="_blank" rel="noopener">Open in Safari</a></p>`;
+    el.innerHTML = `<p class="pdf-loading">${navigator.onLine ? "Couldn't display this PDF." : "This PDF isn't saved on this device yet. Open it once while you're online to keep it."}<br><a href="${el.dataset.src}" target="_blank" rel="noopener">Open in Safari</a></p>`;
   };
   if (!window.pdfjsLib) return fail();
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    "/static/vendor/pdfjs/pdf.worker.min.js";
 
   const ZOOMS = [1, 1.5, 2, 3];
   const MAX_PIXELS = 12e6; // stay under iOS's per-canvas limit

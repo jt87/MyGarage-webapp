@@ -1,4 +1,4 @@
-// Minimal STL viewer (three.js from jsDelivr, loaded only on STL pages).
+// Minimal STL viewer (three.js, vendored in static/vendor, loaded only on STL pages).
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -37,6 +37,6 @@ new STLLoader().load(el.dataset.src, (geo) => {
   el.replaceChildren(renderer.domElement);
   resize();
   renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
-}, undefined, () => { el.innerHTML = '<p class="muted">Could not load this model.</p>'; });
+}, undefined, () => { el.innerHTML = '<p class="muted">' + (navigator.onLine ? "Could not load this model." : "This model isn't saved on this device yet. Open it once while you're online to keep it.") + '</p>'; });
 
 addEventListener("resize", resize);
