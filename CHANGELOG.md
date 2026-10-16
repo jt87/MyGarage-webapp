@@ -2,7 +2,7 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
-## 1.2.0 (unreleased)
+## 1.2.0 (2026-10-16)
 
 ### Added
 - **Overnight upgrades.** A TrueNAS Cron Job installs new 1.x releases at 3 AM, checks the new version starts, and puts the previous one back if it doesn't. See "Automatic upgrades" in the README.
