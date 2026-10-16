@@ -85,6 +85,18 @@
     });
   });
 
+  // Home finder: while typing, offer the full search (parts, manuals, projects) too.
+  const finder = $("[data-search-all]");
+  const searchAll = $("[data-search-all-link]");
+  if (finder && searchAll) {
+    finder.addEventListener("input", () => {
+      const q = finder.value.trim();
+      searchAll.hidden = !q;
+      searchAll.href = `/search?q=${encodeURIComponent(q)}`;
+      $("[data-search-term]", searchAll).textContent = q;
+    });
+  }
+
   // ---------------------------------------------------------------- a new major version
   const majorUpdate = $("[data-major-update]");
   if (majorUpdate && majorUpdate.showModal) majorUpdate.showModal();

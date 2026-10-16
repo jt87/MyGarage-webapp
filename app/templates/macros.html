@@ -4,6 +4,11 @@
 <svg class="{{ cls }}" aria-hidden="true"><use href="/static/icons.svg#{{ name }}"/></svg>
 {%- endmacro %}
 
+{# A model number as a label-maker tag: how a tool is named when there's no photo. #}
+{% macro tag(text) -%}
+<span class="tag">{{ text }}</span>
+{%- endmacro %}
+
 {% macro tile(name, color) -%}
 <span class="tile" style="--tile: var(--{{ color }})">{{ icon(name) }}</span>
 {%- endmacro %}

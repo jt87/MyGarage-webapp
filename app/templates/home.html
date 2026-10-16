@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import icon, tile, nav_row %}
+{% from "macros.html" import icon, tile, nav_row, tag %}
 {% set large = true %}
 {% block content %}
 <div class="large-title"><h1>{{ site_title }}</h1></div>
@@ -8,45 +8,43 @@
 <script>setTimeout(() => location.reload(), 5000);</script>
 {% endif %}
 
-<div class="cards">
-  <a class="card" href="/tools" style="--tile: var(--orange)">
-    <span class="card-head">{{ icon("tool") }}Tools<span class="chev"></span></span>
-    <span class="card-value">{{ inv.tools|length }}</span>
-  </a>
-  <a class="card" href="/insurance" style="--tile: var(--green)">
-    <span class="card-head">{{ icon("shield") }}Value<span class="chev"></span></span>
-    <span class="card-value">{{ inv.total_display }}</span>
-  </a>
-  <a class="card" href="/consumables" style="--tile: var(--blue)">
-    <span class="card-head">{{ icon("shopping-cart") }}Parts<span class="chev"></span></span>
-    <span class="card-value">{{ inv.consumables|length }}<small>items</small></span>
-  </a>
-  <a class="card" href="/projects" style="--tile: var(--indigo)">
-    <span class="card-head">{{ icon("folder") }}Projects<span class="chev"></span></span>
-    <span class="card-value">{{ active|length }}<small>active</small></span>
-  </a>
-</div>
+{# The one thing this screen is for: find a tool. Typing narrows the grid
+   below (name, model, category, parts); Return searches everything. #}
+<form class="finder" action="/search" role="search">
+  {{ icon("search") }}
+  <input type="search" name="q" placeholder="Find a tool, part or manual" aria-label="Find a tool, part or manual"
+         data-filter="[data-tool]" data-search-all enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off">
+</form>
+
+<nav class="tasks" aria-label="Shortcuts">
+  <a href="/consumables">{{ icon("shopping-cart") }}<span>Shopping</span><small>{{ inv.consumables|length }}</small></a>
+  <a href="/projects">{{ icon("folder") }}<span>Projects</span><small>{{ active|length }}</small></a>
+  <a href="/reference">{{ icon("book-open") }}<span>Reference</span></a>
+</nav>
 
 {% if editable %}<div class="section outbox" data-outbox hidden></div>{% endif %}
 
-<div class="section-header prominent"><span>Tools</span><a href="/tools">See All</a></div>
-<div class="shelf">
-  {% for t in inv.tools %}
-  <a href="{{ t.url }}">
-    {% if t.cover %}<img src="{{ t.cover.thumb }}&w=640" alt="" loading="lazy">{% else %}<span class="noimg">{{ icon("tool") }}</span>{% endif %}
-    <strong>{{ t.model_name }}</strong><span>{{ t.subtitle }}</span>
-  </a>
-  {% endfor %}
+<div class="section" data-filter-group>
+  <div class="section-header prominent"><span>Tools <span class="count">{{ inv.tools|length }}</span></span><a href="/tools">List</a></div>
+  <div class="tool-grid">
+    {% for t in inv.tools %}
+    <a href="{{ t.url }}" data-tool data-text="{{ (t.title ~ ' ' ~ t.category ~ ' ' ~ t.model_no ~ ' ' ~ (t.consumables|map(attribute='item')|join(' ')))|lower }}">
+      {% if t.cover %}<img src="{{ t.cover.thumb }}&w=640" alt="" loading="lazy">{% else %}<span class="noimg">{{ tag(t.model_no or t.model_name) }}</span>{% endif %}
+      <strong>{{ t.model_name }}</strong><span>{{ t.subtitle or t.category }}</span>
+    </a>
+    {% endfor %}
+  </div>
 </div>
+<a class="search-all" href="/search" data-search-all-link hidden>{{ icon("search") }}<span>Search everything for “<b data-search-term></b>”</span><span class="chev"></span></a>
 
 {% if recent %}
-<div class="section-header prominent"><span>Recent Activity</span></div>
 <div class="section">
+  <div class="section-header">Recent Maintenance</div>
   <div class="group">
     {% for e in recent %}
     <a class="row" href="/tools/{{ e.slug }}#log">
-      <span class="row-body"><span class="row-title clip">{{ e.title }}</span><span class="row-sub two">{{ e.what }}</span></span>
-      <span class="row-detail t-subhead">{{ e.date }}</span>
+      <span class="row-body"><span class="row-title clip">{{ e.what }}</span><span class="row-sub clip">{{ e.title }}</span></span>
+      <span class="row-date">{{ e.date }}</span>
       <span class="chev"></span>
     </a>
     {% endfor %}
@@ -56,8 +54,7 @@
 
 <div class="section">
   <div class="group">
-    {{ nav_row("/insurance", "Insurance", "shield", "green", inv.total_display) }}
-    {{ nav_row("/reference", "Reference", "book-open", "brown") }}
+    {{ nav_row("/insurance", "Insurance", "shield", "gray", inv.total_display) }}
     {{ nav_row("/settings", "Settings", "settings", "gray") }}
   </div>
 </div>

@@ -22,13 +22,13 @@ GitHub Actions runs in this app repo only, so editing tools and projects in your
 
 ### Design
 
-The interface follows Apple's Human Interface Guidelines so it looks like a stock app once added to the Home Screen. It uses Apple's system colors (systemBlue tint, grouped backgrounds, semantic label grays) with automatic light and dark mode and Increase Contrast support. Icons are the open-source [Feather](https://feathericons.com) set (MIT license, see `app/static/feather-LICENSE.txt`), with stroke weights tuned to sit beside SF Pro text. Text is SF Pro at the iOS Dynamic Type sizes and follows your iPhone's text size setting. Screens use inset grouped lists, large titles that collapse into the nav bar on scroll, a bottom tab bar on iPhone and iPad portrait, and a sidebar on iPad landscape and Mac. Parts open an action sheet with store links, Share opens the iOS share sheet, and the shopping list uses Reminders-style checkmarks. Manuals open in a built-in reader with a page indicator, because Safari can't scroll a PDF embedded in a page and a Home Screen app has no back button out of a raw PDF. iPhone `.heic` photos work as tool photos.
+The interface is a clean utility built on Apple's Human Interface Guidelines, so it feels at home once added to the Home Screen. The home screen leads with one search field that narrows your tools as you type (by name, model, category or the parts they take), and each tool page opens with what you came to do: manual, parts, log work. Color is kept for meaning (systemBlue for actions, orange for a missing receipt) on neutral grouped backgrounds, with automatic light and dark mode and Increase Contrast support. Titles and tool names are set in Barlow Condensed; model numbers, serials and dates are monospace, and a tool with no photo shows its model number as a label-maker tag. Icons are the open-source [Feather](https://feathericons.com) set (MIT license, see `app/static/feather-LICENSE.txt`), with stroke weights tuned to sit beside SF Pro text. Text is SF Pro at the iOS Dynamic Type sizes and follows your iPhone's text size setting. Screens use inset grouped lists, large titles that collapse into the nav bar on scroll, a bottom tab bar on iPhone and iPad portrait, and a sidebar on iPad landscape and Mac. Parts open an action sheet with store links, Share opens the iOS share sheet, and the shopping list uses Reminders-style checkmarks. Manuals open in a built-in reader with a page indicator, because Safari can't scroll a PDF embedded in a page and a Home Screen app has no back button out of a raw PDF. iPhone `.heic` photos work as tool photos.
 
 ## What's where
 
 | Page | What it shows |
 |------|---------------|
-| MyGarage (home) | Totals, photo shelf of every tool, recent maintenance, sync status |
+| MyGarage (home) | Search that narrows your tools as you type, every tool with its photo, shortcuts to Shopping, Projects and Reference, recent maintenance, sync status |
 | Tools | Every tool grouped by category, with a filter |
 | Tool page | Photo gallery, specs, purchase and insurance details, proof of purchase, consumables with store links, manuals and documents, notes, maintenance log, the projects that use it |
 | Shopping | Every consumable in one checklist; tap a part for store links (checkmarks saved on that device) |
@@ -185,7 +185,7 @@ On iPhone or iPad, open the site in Safari and use Share → Add to Home Screen.
 
 ## Credits
 
-MyGarage's own code is MIT-licensed (see LICENSE). It ships three open-source libraries, each with its license next to it: [Feather](https://feathericons.com) icons (MIT, `app/static/feather-LICENSE.txt`), [PDF.js](https://github.com/mozilla/pdf.js) for the manual reader (Apache 2.0, `app/static/vendor/pdfjs/`), and [three.js](https://threejs.org) for the STL viewer (MIT, `app/static/vendor/three/`).
+MyGarage's own code is MIT-licensed (see LICENSE). It ships four open-source projects, each with its license next to it: [Feather](https://feathericons.com) icons (MIT, `app/static/feather-LICENSE.txt`), the [Barlow Condensed](https://github.com/jpt/barlow) typeface (SIL Open Font License 1.1, `app/static/vendor/barlow/`), [PDF.js](https://github.com/mozilla/pdf.js) for the manual reader (Apache 2.0, `app/static/vendor/pdfjs/`), and [three.js](https://threejs.org) for the STL viewer (MIT, `app/static/vendor/three/`).
 
 ## Run it locally
 
