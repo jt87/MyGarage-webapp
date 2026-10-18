@@ -161,7 +161,8 @@ async function thumb(req, url) {
     // Any saved size of the same photo will do; prefer the nearest bigger one.
     const want = Number(url.searchParams.get("w") || 640);
     const same = (await cache.keys()).map((k) => new URL(k.url)).filter((u) =>
-      u.pathname === url.pathname && u.searchParams.get("v") === url.searchParams.get("v"));
+      u.pathname === url.pathname && u.searchParams.get("v") === url.searchParams.get("v")
+      && u.searchParams.get("sq") === url.searchParams.get("sq"));
     if (!same.length) return Response.error();
     same.sort((a, b) => score(a) - score(b));
     return cache.match(same[0].href);
@@ -301,7 +302,7 @@ function refresh(force) {
       const res = await fetch(u);
       if (res.ok && res.type === "basic" && !res.redirected) await thumbs.put(u, res);
     });
-    // Drop thumbnails of photos that were replaced or removed.
+    // Drop thumbnails of photos that were replaced, removed or cropped differently.
     const photoIds = new Set(m.thumbs.map((u) => photoId(new URL(u, location.origin))));
     for (const k of await thumbs.keys()) {
       const u = new URL(k.url);
@@ -318,7 +319,7 @@ function refresh(force) {
   return refreshing;
 }
 
-const photoId = (u) => `${u.pathname}?v=${u.searchParams.get("v")}`;
+const photoId = (u) => `${u.pathname}?v=${u.searchParams.get("v")}&sq=${u.searchParams.get("sq")}`;
 
 async function saveAll(port) {
   const m = await manifest();

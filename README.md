@@ -41,7 +41,7 @@ The interface is a clean utility built on Apple's Human Interface Guidelines, so
 
 The app reads the formats shown in [MyGarage-dataset](https://github.com/jt87/MyGarage-dataset), so copy that repo's layout and keep the formats. It reads the inventory table in the main `README.md` for category, paid and replacement value, and each tool's `README.md` for the title (`# Brand Model — Name`), the spec table, and the `## Consumables & parts` and `## Maintenance log` tables. Other sections show up as written.
 
-Files in a tool folder are sorted by name: images become the photo gallery (`photo.jpg` first, nameplates last), PDFs with "manual" or "guide" in the name are manuals, other PDFs are documents, and anything whose name starts with or contains **`receipt`**, `invoice`, `proof`, `order` or `bill-of-sale` is proof of purchase (kept out of the gallery).
+Files in a tool folder are sorted by name: images become the photo gallery (`photo.jpg` first, nameplates last; photos are shown square, and the square chosen in Adjust Photo is kept in the folder's `.photo-crops.json`), PDFs with "manual" or "guide" in the name are manuals, other PDFs are documents, and anything whose name starts with or contains **`receipt`**, `invoice`, `proof`, `order` or `bill-of-sale` is proof of purchase (kept out of the gallery).
 
 In the consumables table, **bold** part numbers (e.g. `Acme **TS-547**`) become store searches for that exact part. Store buttons appear for the stores named in the "Where to buy" column (Amazon, Home Depot, Lowe's, Walmart, eBay, Harbor Freight, Menards), plus a general web shopping search.
 

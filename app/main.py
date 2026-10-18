@@ -580,6 +580,7 @@ async def add_files(request: Request, rel: str, name: str, back: str, done: str,
                 return edit_failed(request, back,
                                    f"{f.filename} is over {MAX_UPLOAD_MB} MB, too big for GitHub.", 413)
         now = datetime.now()
+        to_crop: list[str] = []  # photos that aren't square, to choose their square next
 
         def mutate(root: Path) -> list[str]:
             folder = root / rel
@@ -587,6 +588,7 @@ async def add_files(request: Request, rel: str, name: str, back: str, done: str,
                 raise edit.Invalid("This isn't in the repo any more.")
             existing = {p.name for p in folder.iterdir()}
             changed = []
+            to_crop.clear()
             for f in uploads:
                 f.file.seek(0)
                 filename = f.filename
@@ -606,13 +608,19 @@ async def add_files(request: Request, rel: str, name: str, back: str, done: str,
                         shutil.copyfileobj(f.file, out)
                 tmp.replace(folder / out_name)
                 changed.append(f"{rel}/{out_name}")
+                if kind == "photo" and not project and not edit.is_square(folder / out_name):
+                    to_crop.append(out_name)
             return changed
 
         n = len(uploads)
         label = ("file" if project else UPLOAD_KINDS[kind].lower()) + ("s" if n > 1 else "")
+        msg = f"Added {n} {label}" if n > 1 else f"{label.capitalize()} added"
+        # Photos are shown square: go straight to choosing the square of the first
+        # one that isn't. The others can be adjusted from Manage Photos & Files.
         return await save_edit(request, form, mutate,
                                f"Add {n if n > 1 else 'a'} {label} to {name}", back,
-                               done, f"Added {n} {label}" if n > 1 else f"{label.capitalize()} added")
+                               lambda: f"{done}/crop/{quote(to_crop[0])}" if to_crop else done,
+                               f"{msg}. Drag to choose the square that's shown." if to_crop else msg)
 
 
 async def tool_new(request: Request):
@@ -678,8 +686,11 @@ async def offline_manifest(request: Request):
                       f"/edit/tools/{t.slug}"]
             pages += [f"{t.url}/log/{i}" for i in range(len(t.log))]
         if t.cover:
-            thumbs += [t.cover.thumb + "&w=320", t.cover.thumb + "&w=640"]
-        thumbs += [p.thumb + "&w=1280" for p in t.photos]
+            thumbs += [t.cover.square + "&w=320", t.cover.square + "&w=640"]
+        thumbs += [p.square + "&w=1280" for p in t.photos]
+        if not READ_ONLY:  # adjusting a photo's square works offline too
+            pages += [f"{t.url}/crop/{quote(p.name)}" for p in t.photos]
+            thumbs += [p.thumb + "&w=640" for p in t.photos]
         add_files(t.photos + t.manuals + t.documents + t.proofs + t.other_files)
     for p in inv.projects:
         pages.append(p.url)
@@ -742,7 +753,17 @@ async def files(request: Request):
 THUMB_WIDTHS = (320, 640, 1280, 2048)
 
 
-def make_thumb(src: Path, out: Path, w: int) -> bool:
+def crop_box(size: tuple[int, int], crop) -> tuple[int, int, int, int]:
+    """The square of an image of `size` that a crop (x, y, zoom) keeps."""
+    w, h = size
+    x, y, z = crop
+    side = max(1, round(min(w, h) / z))
+    left = min(max(round(x * w - side / 2), 0), w - side)
+    top = min(max(round(y * h - side / 2), 0), h - side)
+    return left, top, left + side, top + side
+
+
+def make_thumb(src: Path, out: Path, w: int, crop=None) -> bool:
     from PIL import Image, ImageOps
     try:
         import pillow_heif
@@ -754,7 +775,11 @@ def make_thumb(src: Path, out: Path, w: int) -> bool:
         out.parent.mkdir(parents=True, exist_ok=True)
         with Image.open(src) as im:
             im = ImageOps.exif_transpose(im)
-            im.thumbnail((w, w * 2))
+            if crop:
+                im = im.crop(crop_box(im.size, crop))
+                im.thumbnail((w, w), Image.Resampling.LANCZOS)
+            else:
+                im.thumbnail((w, w * 2))
             im.convert("RGB").save(tmp, "JPEG", quality=82, optimize=True, progressive=True)
         tmp.replace(out)
         return True
@@ -773,12 +798,14 @@ async def thumb(request: Request):
     except ValueError:
         w = 640
     w = min(THUMB_WIDTHS, key=lambda x: abs(x - w))
+    # &sq=x,y,zoom: the photo's square crop (photos are always shown square).
+    crop = repo.clean_crop(request.query_params["sq"].split(",")) if "sq" in request.query_params else None
     st = full.stat()
-    key = hashlib.sha1(f"{full}:{st.st_mtime_ns}:{st.st_size}:{w}".encode()).hexdigest()
+    key = hashlib.sha1(f"{full}:{st.st_mtime_ns}:{st.st_size}:{w}:{crop}".encode()).hexdigest()
     out = CACHE_PATH / "thumbs" / key[:2] / f"{key}.jpg"
-    if not out.exists() and not await anyio.to_thread.run_sync(make_thumb, full, out, w):
+    if not out.exists() and not await anyio.to_thread.run_sync(make_thumb, full, out, w, crop):
         return FileResponse(full)
-    # The URL carries ?v=<mtime>, so a changed photo gets a new URL.
+    # The URL carries ?v=<mtime> (and the crop), so a changed photo gets a new URL.
     return FileResponse(out, media_type="image/jpeg",
                         headers={"Cache-Control": "private, max-age=31536000, immutable"
                                  if "v" in request.query_params else "private, no-cache"})

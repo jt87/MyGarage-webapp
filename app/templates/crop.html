@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% block content %}
+<div class="hero"><h1 data-title>Adjust Photo</h1><p class="t-subhead secondary">{{ t.model_name }} · {{ photo.name }}</p></div>
+{% include "_form_status.html" %}
+<form method="post" action="{{ action }}" data-edit data-label="Adjust {{ photo.name }} · {{ t.model_name }}" data-done="{{ t.url }}">
+  <div class="section">
+    <div class="crop-frame" data-crop data-max-zoom="{{ max_zoom }}">
+      <img src="{{ photo.thumb }}&w=1280" alt="{{ photo.label }}" draggable="false">
+      <div class="crop-grid" aria-hidden="true"></div>
+    </div>
+    <input type="hidden" name="x" value="{{ x }}">
+    <input type="hidden" name="y" value="{{ y }}">
+    <div class="group crop-zoom" data-crop-zoom hidden>
+      <label class="row field">{{ icon("minus", "crop-ic") }}<input type="range" name="zoom" min="1" max="{{ max_zoom }}" step="0.01" value="{{ zoom }}" aria-label="Zoom">{{ icon("plus", "crop-ic") }}</label>
+    </div>
+    <p class="section-footer">Photos are shown square. Drag the photo to choose what's in the square; pinch or use the slider to zoom. The photo itself isn't changed.</p>
+  </div>
+  <div class="section"><div class="group"><button class="row action center" type="submit">Save</button></div></div>
+  <div class="section"><div class="group"><button class="row action center" type="button" data-crop-reset>Reset</button></div></div>
+</form>
+{% endblock %}

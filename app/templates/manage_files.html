@@ -10,7 +10,7 @@
     {% for f, k in files %}
     <details class="file-manage">
       <summary class="row has-icon">
-        {% if f.kind == "image" %}<img class="thumb small" src="{{ f.thumb }}&w=320" alt="" loading="lazy">
+        {% if f.kind == "image" %}{% set sq = is_tool and k == "photo" %}<img class="thumb small{% if sq %} square{% endif %}" src="{{ f.square if sq else f.thumb }}&w=320" alt="" loading="lazy">
         {% else %}<span class="file-tile" style="--tile: var(--{{ FILE_COLORS[f.kind] }})"><span>{{ f.ext|upper }}</span></span>{% endif %}
         <span class="row-body"><span class="row-title clip">{{ f.name }}</span><span class="row-sub">{% if is_tool %}{{ kinds[k] }}{% if f.name == cover %} · Cover{% endif %} · {% endif %}{{ f.human_size }}</span></span>
         <span class="chev"></span>
@@ -22,6 +22,7 @@
         {% if is_tool %}<label class="row field"><span class="field-label">Type</span><select name="kind">{% for key, label in kinds.items() %}{% if key != "photo" or f.kind == "image" %}<option value="{{ key }}" {% if key == k %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select></label>{% endif %}
         <div class="row file-buttons">
           <button class="row-btn" type="submit" name="action" value="rename">Save</button>
+          {% if is_tool and k == "photo" %}<a class="row-btn" href="{{ item.url }}/crop/{{ f.name|q }}">Adjust</a>{% endif %}
           {% if is_tool and k == "photo" and f.name != cover %}<button class="row-btn" type="submit" name="action" value="cover">Make Cover</button>{% endif %}
           <a class="row-btn" href="{{ '/view/' ~ (f.path|q) }}">Open</a>
           <button class="row-btn destructive" type="submit" name="action" value="delete" data-confirm="Delete {{ f.name }}? You can undo it from History.">Delete</button>
@@ -30,7 +31,7 @@
     </details>
     {% endfor %}
   </div>
-  <p class="section-footer">{% if is_tool %}The type decides where a file shows up: photos in the gallery, receipts under Purchase &amp; Insurance, manuals and documents under Manuals &amp; Documents. Links to a renamed file in the README are updated.{% else %}Links to a renamed file in the README are updated.{% endif %}</p>
+  <p class="section-footer">{% if is_tool %}The type decides where a file shows up: photos in the gallery (Adjust chooses the square that's shown), receipts under Purchase &amp; Insurance, manuals and documents under Manuals &amp; Documents. Links to a renamed file in the README are updated.{% else %}Links to a renamed file in the README are updated.{% endif %}</p>
 </div>
 {% else %}
 <div class="section"><div class="group"><div class="row secondary">No files yet.</div></div></div>

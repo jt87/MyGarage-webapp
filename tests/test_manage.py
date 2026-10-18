@@ -70,6 +70,15 @@ def test_photos_are_shrunk_unless_small_jpegs():
     assert edit.shrink_photo(small, "x.jpg") is None
 
 
+def test_crop_box_keeps_the_chosen_square_inside_the_photo():
+    assert main.crop_box((400, 300), repo.DEFAULT_CROP) == (50, 0, 350, 300)
+    assert main.crop_box((400, 300), (0.0, 0.5, 1.0)) == (0, 0, 300, 300)  # pushed back inside
+    assert main.crop_box((400, 300), (0.75, 0.25, 2.0)) == (225, 0, 375, 150)
+    assert repo.clean_crop(["9", "-1", "50"]) == (1.0, 0.0, repo.MAX_ZOOM)
+    assert repo.clean_crop(["nan", "0.5", "1"]) == repo.DEFAULT_CROP
+    assert repo.clean_crop([None, None, None]) == repo.DEFAULT_CROP
+
+
 # --------------------------------------------------------------------------- routes (plain folder)
 
 def test_edit_and_delete_log_entry():
@@ -244,3 +253,56 @@ def test_reverse_hunks():
     assert manage.reverse_hunks("a\nB2\nc\n", "@@ -2 +2 @@\n-b\n+B2\n", old) == "a\nb\nc\n"
     assert manage.reverse_hunks("a\nB3\nc\n", "@@ -2 +2 @@\n-b\n+B2\n", old) is None
     assert manage.reverse_hunks("X\nX\n", "@@ -1,0 +1 @@\n+X\n", "") is None
+
+
+def _photo(w, h, color="red"):
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (w, h), color).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def test_photos_are_shown_square_and_their_square_can_be_chosen():
+    from PIL import Image
+    assert post("/tools/new", model_name="Acme SQ1", edit_id="sq-new")[1]["ok"]
+    folder = ROOT / "tools/acme-sq1"
+    # A wide photo: the app goes straight to choosing its square.
+    r = client.post("/tools/acme-sq1/add", data={"kind": "photo"}, headers=JSON,
+                    files=[("file", ("wide.jpg", _photo(400, 300), "image/jpeg"))])
+    assert r.json()["ok"] and r.json()["url"] == "/tools/acme-sq1/crop/photo.jpg", r.text
+    # A square one doesn't need it.
+    r = client.post("/tools/acme-sq1/add", data={"kind": "photo"}, headers=JSON,
+                    files=[("file", ("square.jpg", _photo(300, 300), "image/jpeg"))])
+    assert r.json()["url"] == "/tools/acme-sq1"
+    second = next(f.name for f in repo.load(ROOT).tool("acme-sq1").photos if f.name != "photo.jpg")
+
+    page = client.get("/tools/acme-sq1/crop/photo.jpg").text
+    assert 'name="x" value="0.5"' in page and 'name="zoom"' in page
+    assert client.get("/tools/acme-sq1/crop/nope.jpg").status_code == 404
+    assert not (folder / repo.CROPS_FILE).exists()  # nothing saved until a square is chosen
+
+    assert post("/tools/acme-sq1/crop/photo.jpg", x="0.75", y="0.25", zoom="2")[1]["ok"]
+    t = repo.load(ROOT).tool("acme-sq1")
+    assert t.cover.crop == (0.75, 0.25, 2.0)
+    assert json.loads((folder / repo.CROPS_FILE).read_text()) == {"photo.jpg": [0.75, 0.25, 2.0]}
+    main.inventory.invalidate()
+    tool_page = client.get("/tools/acme-sq1").text
+    assert "photo.jpg?v=" in tool_page and "&amp;sq=0.75,0.25,2&w=1280" in tool_page
+
+    # The thumbnail is that square of the photo.
+    im = Image.open(BytesIO(client.get(t.cover.square + "&w=320").content))
+    assert im.size == (150, 150)  # never bigger than the square itself
+    assert Image.open(BytesIO(client.get(t.cover.thumb + "&w=320").content)).size == (320, 240)
+
+    # Making another photo the cover: each photo keeps its own square.
+    assert post("/tools/acme-sq1/files", action="cover", name=second)[1]["ok"]
+    crops = repo.read_crops(folder)
+    assert "photo.jpg" not in crops and list(crops.values()) == [(0.75, 0.25, 2.0)]
+    moved = next(iter(crops))
+    # Back to the middle drops it; deleting the last cropped photo removes the file.
+    assert post(f"/tools/acme-sq1/crop/{moved}", x="0.5", y="0.5", zoom="1")[1]["ok"]
+    assert not (folder / repo.CROPS_FILE).exists()
+    assert post(f"/tools/acme-sq1/crop/{moved}", x="0.2", y="0.5", zoom="1.5")[1]["ok"]
+    assert post("/tools/acme-sq1/files", action="delete", name=moved)[1]["ok"]
+    assert not (folder / repo.CROPS_FILE).exists()
+    assert repo.CROPS_FILE not in [f.name for f in repo.load(ROOT).tool("acme-sq1").other_files]
