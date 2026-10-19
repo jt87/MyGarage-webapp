@@ -12,6 +12,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import anyio
 from starlette.exceptions import HTTPException
@@ -90,7 +91,7 @@ async def manage_files(request: Request, kind: str):
         readme = folder / "README.md"
         if action == "delete":
             src.unlink()
-            return [f"{rel}/{old}"]
+            return [f"{rel}/{old}"] + crops_changed(folder, rel, {old: None})
         existing = {p.name for p in folder.iterdir()} - {old}
         renamed: list[tuple[str, str]] = []  # (old name, new name), for README links
         if action == "cover":
@@ -98,7 +99,7 @@ async def manage_files(request: Request, kind: str):
             changed = []
             for p in list(folder.iterdir()):
                 if p.name.startswith("photo.") and p.name != old:
-                    moved = edit.upload_name(p.name, "photo", existing | {"photo.x"}, now)
+                    moved = edit.upload_name(p.name, "photo", existing | {"photo.x", old}, now)
                     p.rename(folder / moved)
                     existing.discard(p.name)
                     existing.add(moved)
@@ -128,6 +129,11 @@ async def manage_files(request: Request, kind: str):
             src.rename(folder / dest)
             changed += [f"{rel}/{old}", f"{rel}/{dest}"]
             renamed.append((old, dest))
+        crops, moves = repo.read_crops(folder), {}
+        for before, after in renamed:  # each photo keeps its square
+            moves.setdefault(before, None)
+            moves[after] = crops.get(before)
+        changed += crops_changed(folder, rel, moves)
         if readme.exists():
             text = m.read_text(readme)
             new_text = text
@@ -144,6 +150,36 @@ async def manage_files(request: Request, kind: str):
     msgs = {"delete": "File deleted", "cover": "Cover photo set", "rename": "File renamed"}
     return await m.save_edit(request, form, mutate, f"{verbs.get(action, 'Change')} {old} ({name})",
                              back, back, msgs.get(action, "Saved"))
+
+
+def crops_changed(folder: Path, rel: str, changes: dict) -> list[str]:
+    return [f"{rel}/{repo.CROPS_FILE}"] if edit.update_crops(folder, changes) else []
+
+
+async def tool_crop(request: Request):
+    """Choose the square of a photo that's shown (/tools/<slug>/crop/<name>)."""
+    t = m.tool_or_404(request)
+    name = request.path_params["name"]
+    photo = next((f for f in t.photos if f.name == name), None)
+    if not photo:
+        raise HTTPException(404)
+    rel = folder_of("tool", t.slug)
+    back = f"{t.url}/crop/{quote(name)}"
+    if request.method == "GET":
+        return m.render(request, "crop.html", t=t, photo=photo, x=photo.crop[0], y=photo.crop[1],
+                        zoom=photo.crop[2], max_zoom=repo.MAX_ZOOM, action=back,
+                        back=(t.url, t.model_name), title="Adjust Photo")
+    form = await request.form()
+    crop = repo.clean_crop([form.get("x"), form.get("y"), form.get("zoom")])
+
+    def mutate(root: Path) -> list[str]:
+        folder = existing_folder(root, rel)
+        if not (folder / name).is_file():
+            raise edit.Invalid("That photo isn't there any more.")
+        return crops_changed(folder, rel, {name: crop})
+
+    return await m.save_edit(request, form, mutate, f"Adjust {name} ({t.model_name})", back,
+                             t.url, "Photo adjusted")
 
 
 async def tool_files(request: Request):
@@ -551,6 +587,7 @@ routes_before = [  # must come before main's /tools/{slug}, /projects/{slug}, /r
 ]
 routes = [
     Route("/tools/{slug}/files", tool_files, methods=["GET", "POST"]),
+    Route("/tools/{slug}/crop/{name}", tool_crop, methods=["GET", "POST"]),
     Route("/tools/{slug}/delete", tool_delete, methods=["POST"]),
     Route("/tools/{slug}/log/{n:int}", log_entry, methods=["GET", "POST"]),
     Route("/projects/{slug}/edit", project_edit, methods=["GET", "POST"]),

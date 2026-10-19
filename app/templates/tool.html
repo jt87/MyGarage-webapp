@@ -9,8 +9,8 @@
 <div class="gallery" data-gallery>
   <div class="slides" aria-label="Photos">
     {% for f in t.photos %}
-    <button type="button" class="slide" data-full="{{ f.thumb }}&w=2048" aria-label="View {{ f.label }}">
-      <img src="{{ f.thumb }}&w=1280" srcset="{{ f.thumb }}&w=640 640w, {{ f.thumb }}&w=1280 1280w, {{ f.thumb }}&w=2048 2048w"
+    <button type="button" class="slide" data-full="{{ f.square }}&w=2048" aria-label="View {{ f.label }}">
+      <img src="{{ f.square }}&w=1280" srcset="{{ f.square }}&w=640 640w, {{ f.square }}&w=1280 1280w, {{ f.square }}&w=2048 2048w"
            sizes="(max-width: 720px) 100vw, 720px" alt="{{ f.label }}" {% if not loop.first %}loading="lazy"{% endif %}>
     </button>
     {% endfor %}

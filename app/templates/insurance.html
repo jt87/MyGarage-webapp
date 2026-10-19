@@ -55,7 +55,7 @@
     <tbody>
     {% for t in inv.tools %}
     <tr>
-      <td>{% if t.cover %}<img src="{{ t.cover.thumb }}&w=320" alt="">{% endif %}</td>
+      <td>{% if t.cover %}<img src="{{ t.cover.square }}&w=320" alt="">{% endif %}</td>
       <td><strong>{{ t.model_name }}</strong><br>{{ t.subtitle }}</td>
       <td>{{ t.model_no|truncate(40) }}<br>{{ t.serial.split('. ')[0]|truncate(40) or '—' }}</td>
       <td>{{ t.spec_text.get('purchased', '')|truncate(70) or '—' }}</td>

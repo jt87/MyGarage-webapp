@@ -489,6 +489,96 @@
     i.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
 
+  // ---------------------------------------------------------------- a photo's square
+  // Drag to move the photo under the square, pinch, scroll or use the slider to
+  // zoom. The form sends the square's center (x, y as fractions) and zoom.
+  $$("[data-crop]").forEach((frame) => {
+    const form = frame.closest("form");
+    const img = $("img", frame);
+    const inX = $("input[name=x]", form), inY = $("input[name=y]", form), inZ = $("input[name=zoom]", form);
+    const maxZ = Number(frame.dataset.maxZoom) || 4;
+    let x = Number(inX.value), y = Number(inY.value), z = Number(inZ.value);
+    let iw = 0, ih = 0;
+    const scale = () => frame.clientWidth * z / Math.min(iw, ih);  // screen px per image px
+    function render() {
+      if (!iw) return;
+      z = Math.min(Math.max(z, 1), maxZ);
+      const half = Math.min(iw, ih) / z / 2;
+      x = Math.min(Math.max(x, half / iw), 1 - half / iw);
+      y = Math.min(Math.max(y, half / ih), 1 - half / ih);
+      const s = scale(), v = frame.clientWidth / 2;
+      img.style.width = `${iw * s}px`;
+      img.style.height = `${ih * s}px`;
+      img.style.transform = `translate(${v - x * iw * s}px, ${v - y * ih * s}px)`;
+      inX.value = x.toFixed(4);
+      inY.value = y.toFixed(4);
+      inZ.value = z.toFixed(3);
+    }
+    // Zoom to `nz` keeping the image point under `from` (frame px) under `to`.
+    function move(from, to, nz) {
+      const v = frame.clientWidth / 2, s0 = scale();
+      const px = x * iw + (from.x - v) / s0, py = y * ih + (from.y - v) / s0;
+      z = Math.min(Math.max(nz, 1), maxZ);
+      const s1 = scale();
+      x = (px - (to.x - v) / s1) / iw;
+      y = (py - (to.y - v) / s1) / ih;
+      render();
+    }
+    const start = () => {
+      iw = img.naturalWidth; ih = img.naturalHeight;
+      if (!iw || !ih) return;
+      frame.classList.add("live");
+      frame.tabIndex = 0;
+      frame.setAttribute("aria-label", "Photo position. Arrow keys move it.");
+      $("[data-crop-zoom]", form).hidden = false;
+      render();
+    };
+    if (img.complete) start(); else img.addEventListener("load", start);
+    addEventListener("resize", render);
+
+    const pts = new Map();
+    const at = (e) => { const r = frame.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const mid = () => { const [a, b] = [...pts.values()]; return b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : a; };
+    const gap = () => { const [a, b] = [...pts.values()]; return b ? Math.hypot(a.x - b.x, a.y - b.y) : 0; };
+    frame.addEventListener("pointerdown", (e) => {
+      if (!iw) return;
+      frame.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, at(e));
+      frame.classList.add("moving");
+    });
+    frame.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      const m0 = mid(), g0 = gap();
+      pts.set(e.pointerId, at(e));
+      const m1 = mid(), g1 = gap();
+      move(m0, m1, g0 && g1 ? z * g1 / g0 : z);
+    });
+    const end = (e) => {
+      pts.delete(e.pointerId);
+      if (!pts.size) frame.classList.remove("moving");
+    };
+    frame.addEventListener("pointerup", end);
+    frame.addEventListener("pointercancel", end);
+    frame.addEventListener("wheel", (e) => {
+      if (!iw) return;
+      e.preventDefault();
+      const p = at(e);
+      move(p, p, z * Math.exp(-e.deltaY / 300));
+    }, { passive: false });
+    frame.addEventListener("keydown", (e) => {
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (!d || !iw) return;
+      e.preventDefault();
+      const c = { x: frame.clientWidth / 2, y: frame.clientWidth / 2 };
+      move(c, { x: c.x - d[0] * 10, y: c.y - d[1] * 10 }, z);
+    });
+    inZ.addEventListener("input", () => {
+      const c = { x: frame.clientWidth / 2, y: frame.clientWidth / 2 };
+      move(c, c, Number(inZ.value));
+    });
+    $("[data-crop-reset]", form).addEventListener("click", () => { x = 0.5; y = 0.5; z = 1; render(); });
+  });
+
   // Add Files: help text follows the chosen type; the button names the files.
   $$("[data-kind-help]").forEach((help) => {
     const sync = () => {

@@ -24,7 +24,7 @@
 
 {% macro tool_row(t, detail="", sub=None, href=None, filter=False) -%}
 <a class="row has-thumb" href="{{ href or t.url }}"{% if filter %} data-tool data-text="{{ (t.title ~ ' ' ~ t.category ~ ' ' ~ t.model_no)|lower }}"{% endif %}>
-  {% if t.cover %}<img class="thumb" src="{{ t.cover.thumb }}&w=320" alt="" loading="lazy">
+  {% if t.cover %}<img class="thumb" src="{{ t.cover.square }}&w=320" alt="" loading="lazy">
   {% else %}<span class="thumb">{{ icon("tool") }}</span>{% endif %}
   <span class="row-body">
     <span class="row-title clip">{{ t.model_name }}</span>

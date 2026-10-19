@@ -9,6 +9,7 @@ of quietly overwriting the other change.
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from datetime import datetime
@@ -545,3 +546,47 @@ def shrink_photo(src, name: str) -> tuple[bytes, str] | None:
         return None
     stem = name.rsplit(".", 1)[0]
     return buf.getvalue(), f"{stem}.jpg"
+
+
+def is_square(path) -> bool:
+    """Whether a photo is already square (within 1%). Unreadable counts as square:
+    there's nothing to adjust."""
+    from PIL import Image
+    try:
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
+    try:
+        with Image.open(path) as im:
+            w, h = im.size  # rotation doesn't change whether it's square
+    except Exception:
+        return True
+    return abs(w - h) <= max(w, h) * 0.01
+
+
+def update_crops(folder, changes: dict[str, tuple[float, float, float] | None]) -> bool:
+    """Set (or with None, drop) photos' crops in a folder's crops file.
+
+    Returns whether the file changed. A crop back at the default is dropped, and
+    the file is removed once it's empty, so a garage that never adjusts a photo
+    never has one.
+    """
+    p = folder / repo.CROPS_FILE
+    crops = {k: list(v) for k, v in repo.read_crops(folder).items()}
+    before = dict(crops)
+    for name, crop in changes.items():
+        if crop is None or tuple(crop) == repo.DEFAULT_CROP:
+            crops.pop(name, None)
+        else:
+            crops[name] = list(crop)
+    if crops == before and (crops or not p.exists()):
+        return False
+    if not crops:
+        p.unlink(missing_ok=True)
+        return True
+    tmp = p.with_name(f"{p.name}.tmp")
+    rows = ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in sorted(crops.items()))
+    tmp.write_text("{\n" + rows + "\n}\n", encoding="utf-8")  # a photo per line
+    tmp.replace(p)
+    return True

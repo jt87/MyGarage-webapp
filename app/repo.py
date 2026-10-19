@@ -24,6 +24,13 @@ PROOF_RE = re.compile(r"receipt|invoice|proof|order|purchase|bill-of-sale", re.I
 MANUAL_RE = re.compile(r"manual|guide|quick-?start|instructions", re.I)
 SERVED_DIRS = ("tools", "projects", "reference")
 
+# Photos are shown square. Which square of each photo is kept here, per folder:
+# {"photo.jpg": [x, y, zoom]}, the crop's center as fractions of the width and
+# height, and how far it's zoomed in from the largest square (1 to MAX_ZOOM).
+CROPS_FILE = ".photo-crops.json"
+DEFAULT_CROP = (0.5, 0.5, 1.0)
+MAX_ZOOM = 4.0
+
 # Spec rows that get their own place on the tool page instead of the spec table.
 SPECIAL_ROWS = {"photo", "photos", "purchased", "replacement value", "manual", "category"}
 
@@ -195,6 +202,7 @@ class FileItem:
     size: int
     kind: str  # image | pdf | model | other
     mtime: int = 0
+    crop: tuple[float, float, float] = DEFAULT_CROP
 
     @property
     def url(self) -> str:
@@ -204,6 +212,11 @@ class FileItem:
     def thumb(self) -> str:
         """JPEG thumbnail URL; append "&w=<px>". Versioned so it can be cached."""
         return f"/thumb/{quote(self.path)}?v={self.mtime}"
+
+    @property
+    def square(self) -> str:
+        """Thumbnail URL of the photo's square crop; append "&w=<px>"."""
+        return f"{self.thumb}&sq={crop_param(self.crop)}"
 
     @property
     def ext(self) -> str:
@@ -224,8 +237,35 @@ class FileItem:
         return ""
 
 
+def clean_crop(value) -> tuple[float, float, float]:
+    """A crop from the crops file or a form, kept in range; DEFAULT_CROP if unreadable."""
+    try:
+        x, y, z = (float(v) for v in value)
+    except (TypeError, ValueError):
+        return DEFAULT_CROP
+    if not all(v == v and abs(v) != float("inf") for v in (x, y, z)):  # NaN, inf
+        return DEFAULT_CROP
+    return (round(min(max(x, 0.0), 1.0), 4), round(min(max(y, 0.0), 1.0), 4),
+            round(min(max(z, 1.0), MAX_ZOOM), 3))
+
+
+def crop_param(crop: tuple[float, float, float]) -> str:
+    return ",".join(f"{v:g}" for v in crop)
+
+
+def read_crops(folder: Path) -> dict[str, tuple[float, float, float]]:
+    try:
+        data = json.loads((folder / CROPS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): clean_crop(v) for k, v in data.items() if isinstance(v, list)}
+
+
 def folder_files(root: Path, rel: str) -> list[FileItem]:
     out = []
+    crops = read_crops(root / rel)
     for p in sorted((root / rel).iterdir()):
         if p.is_dir() or p.name.startswith(".") or p.name == "README.md":
             continue
@@ -240,7 +280,8 @@ def folder_files(root: Path, rel: str) -> list[FileItem]:
             st = p.stat()
         except OSError:  # broken symlink
             continue
-        out.append(FileItem(p.name, f"{rel}/{p.name}", st.st_size, kind, int(st.st_mtime)))
+        out.append(FileItem(p.name, f"{rel}/{p.name}", st.st_size, kind, int(st.st_mtime),
+                            crops.get(p.name, DEFAULT_CROP)))
     return out
 
 

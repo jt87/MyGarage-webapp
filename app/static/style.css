@@ -306,12 +306,12 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
 .slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; background: var(--cell); }
 .slides::-webkit-scrollbar { display: none; }
 .slide { flex: 0 0 100%; scroll-snap-align: center; padding: 0; border: 0; background: none; cursor: zoom-in; }
-.slide img { display: block; width: 100%; height: min(75vw, 440px); object-fit: cover; }
+.slide img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 .dots { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 8px; padding: 6px 9px; border-radius: 99px; background: rgba(0,0,0,.28); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.45); }
 .dots i[aria-current] { background: #fff; }
 @media (min-width: 720px) {
-  .gallery { margin: 4px 0 16px; }
+  .gallery { margin: 4px auto 16px; max-width: 480px; }
   .slides { border-radius: 12px; }
 }
 .hero { padding: 2px 4px 18px; }
@@ -636,6 +636,7 @@ input.row-input[type=date] { -webkit-appearance: none; appearance: none; text-al
 .file-manage > summary::-webkit-details-marker { display: none; }
 .file-manage[open] > summary .chev { transform: rotate(90deg); }
 .file-manage .thumb.small { width: 30px; height: 38px; border-radius: 4px; }
+.file-manage .thumb.small.square { width: 38px; height: 38px; margin: 0 -4px; }
 .file-actions { background: var(--cell-2); }
 .file-actions .row { background: transparent; }
 .file-buttons { justify-content: flex-end; gap: 14px; flex-wrap: wrap; }
@@ -652,3 +653,23 @@ input.row-input[type=date] { -webkit-appearance: none; appearance: none; text-al
 .sheet-head.notice span { font-size: .882rem; }
 .sheet-notes { max-height: 40vh; overflow-y: auto; border-radius: 0; background: transparent; border-top: .5px solid var(--separator); font-size: .882rem; }
 .banner.section-footer { margin: 10px 0 0; padding: 10px 14px; }
+
+/* ------------------------------------------------------------------ choosing a photo's square */
+.crop-frame {
+  position: relative; width: 100%; max-width: 480px; margin: 0 auto 12px; aspect-ratio: 1; overflow: hidden;
+  border-radius: 12px; background: var(--cell); box-shadow: 0 0 0 .5px var(--separator);
+  touch-action: none; -webkit-user-select: none; user-select: none; cursor: grab;
+}
+.crop-frame:active { cursor: grabbing; }
+.crop-frame img { display: block; width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
+.crop-frame.live img { position: absolute; left: 0; top: 0; width: auto; height: auto; max-width: none; object-fit: fill; transform-origin: 0 0; }
+.crop-grid { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background:
+    linear-gradient(to right, transparent calc(33.333% - .5px), rgba(255,255,255,.7) calc(33.333% - .5px), rgba(255,255,255,.7) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.667% - .5px), rgba(255,255,255,.7) calc(66.667% - .5px), rgba(255,255,255,.7) calc(66.667% + .5px), transparent calc(66.667% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.333% - .5px), rgba(255,255,255,.7) calc(33.333% - .5px), rgba(255,255,255,.7) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.667% - .5px), rgba(255,255,255,.7) calc(66.667% - .5px), rgba(255,255,255,.7) calc(66.667% + .5px), transparent calc(66.667% + .5px)); }
+.crop-frame.moving .crop-grid { opacity: 1; }
+.crop-zoom { max-width: 480px; margin: 0 auto; }
+.crop-zoom[hidden] { display: none; }
+.crop-zoom .row { gap: 12px; }
+.crop-zoom input { flex: 1; min-width: 0; accent-color: var(--tint); }
+.crop-ic { flex: 0 0 auto; width: 18px; height: 18px; color: var(--secondary-label); stroke-width: 2.2; }
