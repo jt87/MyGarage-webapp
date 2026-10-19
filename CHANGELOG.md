@@ -2,13 +2,16 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
-## 1.4.0 (unreleased)
+## 1.4.0 (2026-10-19)
 
 ### Added
 - **Photos are shown square everywhere in the app**: the home screen, lists, the tool page gallery and full-screen view, and the insurance inventory. When you add a photo that isn't square, the app goes straight to Adjust Photo, where you drag the photo to choose what's in the square and pinch or use the slider to zoom. Any photo can be adjusted later from Manage Photos & Files → Adjust. The photo itself is never changed; the chosen square is saved in a small `.photo-crops.json` next to it, and Download and Open still give the whole photo.
 
 ### Fixed
 - Make Cover could overwrite the photo being made the cover if it had been added in the same second.
+
+### Upgrading from 1.3
+- Nothing is required: open the app in TrueNAS Apps and choose Update. Photos that aren't square are shown centered until you adjust them.
 
 ## 1.3.0 (2026-10-16)
 
