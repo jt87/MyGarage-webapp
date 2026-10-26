@@ -27,10 +27,10 @@
 <div class="section" data-filter-group>
   <div class="section-header prominent"><span>Tools <span class="count">{{ inv.tools|length }}</span></span><a href="/tools">List</a></div>
   <div class="tool-grid">
-    {% for t in inv.tools %}
+    {% for t in inv.tools|sort(attribute="display_name") %}
     <a href="{{ t.url }}" data-tool data-text="{{ (t.title ~ ' ' ~ t.category ~ ' ' ~ t.model_no ~ ' ' ~ (t.consumables|map(attribute='item')|join(' ')))|lower }}">
       {% if t.cover %}<img src="{{ t.cover.square }}&w=640" alt="" loading="lazy">{% else %}<span class="noimg">{{ tag(t.model_no or t.model_name) }}</span>{% endif %}
-      <strong>{{ t.model_name }}</strong><span>{{ t.subtitle or t.category }}</span>
+      <strong>{{ t.display_name }}</strong><span>{{ t.display_sub or t.category }}</span>
     </a>
     {% endfor %}
   </div>

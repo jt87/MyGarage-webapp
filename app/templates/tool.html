@@ -21,8 +21,8 @@
 
 <div class="hero">
   <p class="eyebrow">{{ t.category }}</p>
-  <h1 data-title>{{ t.model_name }}</h1>
-  {% if t.subtitle %}<p class="t-subhead secondary">{{ t.subtitle }}</p>{% endif %}
+  <h1 data-title>{{ t.display_name }}</h1>
+  {% if t.display_sub %}<p class="t-subhead secondary">{{ t.display_sub }}</p>{% endif %}
   {% if t.model_no or t.serial or not t.proofs %}
   <div class="hero-meta">
     {% if t.model_no %}{{ tag(t.model_no) }}{% endif %}

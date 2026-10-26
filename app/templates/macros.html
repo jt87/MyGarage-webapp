@@ -27,8 +27,8 @@
   {% if t.cover %}<img class="thumb" src="{{ t.cover.square }}&w=320" alt="" loading="lazy">
   {% else %}<span class="thumb">{{ icon("tool") }}</span>{% endif %}
   <span class="row-body">
-    <span class="row-title clip">{{ t.model_name }}</span>
-    <span class="row-sub clip">{{ t.subtitle if sub is none else sub }}</span>
+    <span class="row-title clip">{{ t.display_name }}</span>
+    <span class="row-sub clip">{{ t.display_sub if sub is none else sub }}</span>
   </span>
   {% if detail %}<span class="row-detail">{{ detail }}</span>{% endif %}
   <span class="chev"></span>

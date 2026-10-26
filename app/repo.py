@@ -467,6 +467,15 @@ class Tool:
     def model_no(self) -> str:
         return self.spec_text.get("model #", "")
 
+    # What the tool is ("12" Band Saw") leads; brand and model are secondary.
+    @property
+    def display_name(self) -> str:
+        return self.subtitle or self.model_name
+
+    @property
+    def display_sub(self) -> str:
+        return self.model_name if self.subtitle else ""
+
 
 @dataclass
 class Project:
@@ -524,7 +533,7 @@ class Inventory:
     @property
     def tools_by_category(self) -> list[tuple[str, list[Tool]]]:
         groups: dict[str, list[Tool]] = {}
-        for t in sorted(self.tools, key=lambda t: t.model_name.lower()):
+        for t in sorted(self.tools, key=lambda t: t.display_name.lower()):
             groups.setdefault(t.category, []).append(t)
         return sorted(groups.items())
 
