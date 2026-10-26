@@ -2,6 +2,15 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
+## 1.5.0 (2026-10-26)
+
+### Changed
+- **Tools are named by what they are.** The home screen and Tools list now lead with the kind of tool and its size ("Band Saw", "12\" 2-Speed") instead of the brand and model number, and tools are sorted that way. When a tool's name ends with its category, the app splits it there; otherwise the whole name is shown. Brand and model are on the tool page, and searching by either still finds the tool.
+- The Tools list no longer shows the model number at the right of each row.
+
+### Upgrading from 1.4
+- Nothing is required: open the app in TrueNAS Apps and choose Update.
+
 ## 1.4.0 (2026-10-19)
 
 ### Added
