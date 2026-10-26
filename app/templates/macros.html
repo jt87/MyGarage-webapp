@@ -30,7 +30,6 @@
     <span class="row-title clip">{{ t.kind }}</span>
     {% if sub is none %}
     {% if t.kind_detail %}<span class="row-sub clip">{{ t.kind_detail }}</span>{% endif %}
-    {% if t.model_line %}<span class="row-sub clip">{{ t.model_line }}</span>{% endif %}
     {% else %}<span class="row-sub clip">{{ sub }}</span>{% endif %}
   </span>
   {% if detail %}<span class="row-detail">{{ detail }}</span>{% endif %}

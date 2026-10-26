@@ -379,7 +379,6 @@ a.row:active, button.row:active { background: var(--cell-pressed); }
 .tool-grid strong { display: block; margin-top: 6px; font-size: .824rem; font-weight: 600; line-height: 1.25; letter-spacing: -.01em;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tool-grid span:not(.tag):not(.noimg) { display: block; font-size: .765rem; color: var(--secondary-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tool-grid .maker { margin-top: 4px; }
 .tool-grid a:active img, .tool-grid a:active .noimg { opacity: .75; }
 @media (hover: hover) { .tool-grid a:hover strong { color: var(--tint); } }
 
