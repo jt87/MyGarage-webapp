@@ -77,7 +77,7 @@ def test_markdown_editor_only_deletes_reference_pages():
 
 
 def test_a_tool_called_new_gets_its_own_page():
-    r = client.post("/tools/new", data={"model_name": "New"}, headers=JSON)
+    r = client.post("/tools/new", data={"kind": "Sander", "model_no": "New"}, headers=JSON)
     assert r.json()["url"] == "/tools/new-2"
     assert "New Tool" not in client.get("/tools/new-2").text.split("<title>")[1].split("</title>")[0]
     client.post("/tools/new-2/delete", data={"confirm": "new-2"}, headers=JSON)

@@ -156,7 +156,7 @@ def test_projects_new_edit_files_delete():
 
 
 def test_delete_tool_removes_folder_and_inventory_row():
-    assert post("/tools/new", model_name="Acme DEL1", value="50")[1]["ok"]
+    assert post("/tools/new", kind="Sander", brand="Acme", model_no="DEL1", value="50")[1]["ok"]
     assert "acme-del1" in (ROOT / "README.md").read_text()
     assert post("/tools/acme-del1/delete", confirm="acme-del1")[1]["ok"]
     assert not (ROOT / "tools/acme-del1").exists()
@@ -264,7 +264,7 @@ def _photo(w, h, color="red"):
 
 def test_photos_are_shown_square_and_their_square_can_be_chosen():
     from PIL import Image
-    assert post("/tools/new", model_name="Acme SQ1", edit_id="sq-new")[1]["ok"]
+    assert post("/tools/new", kind="Sander", brand="Acme", model_no="SQ1", edit_id="sq-new")[1]["ok"]
     folder = ROOT / "tools/acme-sq1"
     # A wide photo: the app goes straight to choosing its square.
     r = client.post("/tools/acme-sq1/add", data={"kind": "photo"}, headers=JSON,

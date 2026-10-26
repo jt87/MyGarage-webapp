@@ -160,7 +160,7 @@ FIRST_RUN = textwrap.dedent("""
             time.sleep(0.1)
         main.inventory.invalidate()
         out["tools"] = c.get("/tools").text.count('data-tool ')
-        r = c.post("/tools/new", data={"model_name": "Acme X1", "subtitle": "Sander"},
+        r = c.post("/tools/new", data={"kind": "Sander", "brand": "Acme", "model_no": "X1"},
                    headers={"Accept": "application/json"})
         out["new"] = r.json()
         out["mode"] = main.sync.mode
@@ -277,7 +277,7 @@ SWITCH = textwrap.dedent("""
         out["page2"] = "Make This Server the Primary Copy" in c.get("/settings").text
         c.post("/settings/storage", data={"action": "primary_server", "current": pw})
         out["mode3"] = main.sync.mode
-        r = c.post("/tools/new", data={"model_name": "Acme Z9"}, headers={"Accept": "application/json"})
+        r = c.post("/tools/new", data={"kind": "Sander", "brand": "Acme", "model_no": "Z9"}, headers={"Accept": "application/json"})
         out["new"] = r.json().get("ok")
         main.sync.wait_for_backup()  # the push runs after the save returns
     print("RESULT" + json.dumps(out))

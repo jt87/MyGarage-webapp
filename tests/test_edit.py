@@ -114,7 +114,7 @@ def tool_form(slug):
 
 def form_data(state, **changes):
     s = {**state, **changes}
-    data = {k: s[k] for k in ("model_name", "subtitle", "category", "paid", "value")}
+    data = {k: s[k] for k in ("kind", "detail", "brand", "model", "category", "paid", "value")}
     data["base"] = json.dumps(state)
     data["spec_k"] = [k for k, _ in s["specs"]]
     data["spec_v"] = [v for _, v in s["specs"]]
@@ -176,11 +176,11 @@ def test_upload_files():
 
 
 def test_new_tool():
-    r = client.post("/tools/new", data={"model_name": "Acme RS5", "subtitle": "Random Orbit Sander",
+    r = client.post("/tools/new", data={"kind": "Sander", "detail": "Random Orbit", "brand": "Acme", "model_no": "RS5",
                                         "category": "Sander", "paid": "60", "value": "90",
                                         "edit_id": "new-1"}, headers=JSON)
     assert r.json()["ok"] and r.json()["url"] == "/tools/acme-rs5"
-    again = client.post("/tools/new", data={"model_name": "Acme RS5", "edit_id": "new-1"}, headers=JSON)
+    again = client.post("/tools/new", data={"kind": "Sander", "brand": "Acme", "model_no": "RS5", "edit_id": "new-1"}, headers=JSON)
     assert again.json()["ok"] and not (ROOT / "tools" / "acme-rs5-2").exists()
     t = repo.load(ROOT).tool("acme-rs5")
     assert t.subtitle == "Random Orbit Sander" and t.category == "Sander" and t.value == 90 and t.paid == 60
@@ -306,3 +306,22 @@ def test_git_write_redoes_the_edit_when_github_moved_mid_save(remote, tmp_path):
     assert len(calls) == 2
     shown = git("show", "main:tools/acme-ts10/README.md", cwd=remote)
     assert "Waxed the top twice." in shown and "Trued the fence" in shown
+
+
+def test_edit_name_as_type_size_brand_model():
+    state = tool_form("acme-ts10")
+    assert (state["kind"], state["detail"], state["brand"], state["model"]) == ("Table Saw", '10"', "Acme", "TS10")
+    # Saving other fields leaves the name as written.
+    assert client.post("/tools/acme-ts10/edit", data=form_data(state, value="310"), headers=JSON).json()["ok"]
+    assert readme("acme-ts10").startswith('# Acme TS10 — 10" Table Saw')
+    # A type that isn't the category is kept in a Type row so the split survives.
+    state = tool_form("acme-ts10")
+    r = client.post("/tools/acme-ts10/edit", data=form_data(state, kind="Saw", detail='10" Table'), headers=JSON)
+    assert r.json()["ok"], r.text
+    text = readme("acme-ts10")
+    assert text.startswith('# Acme TS10 — 10" Table Saw') and "| Type | Saw |" in text
+    t = repo.load(ROOT).tool("acme-ts10")
+    assert (t.kind, t.kind_detail, t.maker, t.model) == ("Saw", '10" Table', "Acme", "TS10")
+    state = tool_form("acme-ts10")
+    client.post("/tools/acme-ts10/edit", data=form_data(state, kind="Table Saw", detail='10"'), headers=JSON)
+    assert "| Type |" not in readme("acme-ts10")

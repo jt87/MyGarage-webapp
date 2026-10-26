@@ -15,16 +15,19 @@
 </div>
 {%- endmacro %}
 {% block content %}
-<div class="hero"><h1 data-title>Edit Tool</h1><p class="t-subhead secondary">{{ t.model_name }}</p></div>
+<div class="hero"><h1 data-title>Edit Tool</h1><p class="t-subhead secondary">{{ t.kind }}</p></div>
 {% include "_form_status.html" %}
 <form method="post" action="{{ t.url }}/edit" data-edit data-label="Edit · {{ t.model_name }}" data-done="{{ t.url }}">
   <input type="hidden" name="base" value="{{ base }}">
   <div class="section">
-    <div class="section-header">Name</div>
+    <div class="section-header">Tool</div>
     <div class="group">
-      <label class="row field"><span class="field-label">Brand &amp; model</span><input class="row-input" name="model_name" value="{{ s.model_name }}" required></label>
-      <label class="row field"><span class="field-label">Name</span><input class="row-input" name="subtitle" value="{{ s.subtitle }}" placeholder="10&quot; Table Saw"></label>
+      <label class="row field"><span class="field-label">Type</span><input class="row-input" name="kind" value="{{ s.kind }}" placeholder="Table Saw"></label>
+      <label class="row field"><span class="field-label">Size</span><input class="row-input" name="detail" value="{{ s.detail }}" placeholder="10&quot;"></label>
+      <label class="row field"><span class="field-label">Brand</span><input class="row-input" name="brand" value="{{ s.brand }}" placeholder="Acme"></label>
+      <label class="row field"><span class="field-label">Model</span><input class="row-input" name="model" value="{{ s.model }}" placeholder="TS10" autocapitalize="characters"></label>
     </div>
+    <p class="section-footer">Type and size are the tool's name in lists; brand and model show on its page.</p>
   </div>
   <div class="section">
     <div class="section-header">Inventory</div>

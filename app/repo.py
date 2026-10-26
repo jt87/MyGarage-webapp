@@ -32,7 +32,7 @@ DEFAULT_CROP = (0.5, 0.5, 1.0)
 MAX_ZOOM = 4.0
 
 # Spec rows that get their own place on the tool page instead of the spec table.
-SPECIAL_ROWS = {"photo", "photos", "purchased", "replacement value", "manual", "category"}
+SPECIAL_ROWS = {"photo", "photos", "purchased", "replacement value", "manual", "category", "type"}
 
 
 # --------------------------------------------------------------------------- markdown
@@ -422,6 +422,27 @@ class LogEntry:
     kind: str  # tool | project
 
 
+def split_kind(name: str, category: str, kind: str = "") -> tuple[str, str]:
+    """'12" 2-Speed Band Saw' -> ('Band Saw', '12" 2-Speed'). The kind is the README's
+    Type row when there is one, else the category; a name ending with neither is all kind."""
+    name = name.strip()
+    for cand in (kind.strip(), category.strip()):
+        if cand and name.lower().endswith(cand.lower()):
+            return name[len(name) - len(cand):], name[:len(name) - len(cand)].strip(" ,-–—")
+    return name, ""
+
+
+def split_maker(model_name: str, model_no: str = "") -> tuple[str, str]:
+    """'Craftsman 113.206931' -> ('Craftsman', '113.206931'). The model is the Model #
+    row (without any note in parentheses), else the name's last word."""
+    name = model_name.strip()
+    words = name.split()
+    model = model_no.split(" (")[0].strip() or (words[-1] if len(words) > 1 else "")
+    if model and name.lower().endswith(model.lower()):
+        return name[:len(name) - len(model)].strip(), model
+    return name, model
+
+
 @dataclass
 class Tool:
     slug: str
@@ -468,13 +489,11 @@ class Tool:
         return self.spec_text.get("model #", "")
 
     # Display order: what the tool is ("Band Saw"), its size/variant ("12" 2-Speed"),
-    # then who made it and the model. Split from the name when it ends with the
-    # category; otherwise the whole name is the kind.
+    # then who made it and the model. See split_kind and split_maker.
     def _kind_split(self) -> tuple[str, str]:
-        name, cat = self.subtitle.strip(), self.category.strip()
-        if cat and len(name) > len(cat) and name.lower().endswith(cat.lower()):
-            return name[-len(cat):], name[:-len(cat)].strip(" ,-–—")
-        return (name or self.model_name), ""
+        if not self.subtitle.strip():
+            return self.model_name, ""
+        return split_kind(self.subtitle, self.category, self.spec_text.get("type", ""))
 
     @property
     def kind(self) -> str:
@@ -485,15 +504,12 @@ class Tool:
         return self._kind_split()[1]
 
     @property
-    def model(self) -> str:
-        return self.model_no.split(" (")[0].strip() or self.model_name.split()[-1]
+    def maker(self) -> str:
+        return split_maker(self.model_name, self.model_no)[0]
 
     @property
-    def maker(self) -> str:
-        name = self.model_name.strip()
-        if name.lower().endswith(self.model.lower()):
-            name = name[:-len(self.model)].strip()
-        return name
+    def model(self) -> str:
+        return split_maker(self.model_name, self.model_no)[1]
 
     @property
     def model_line(self) -> str:

@@ -437,12 +437,18 @@ async def tool_log(request: Request):
 def tool_form_state(t: repo.Tool, text: str, main_text: str) -> dict:
     """What the details form shows, also sent back as `base` for merging."""
     model_name, subtitle = edit.split_title(text)
+    model_name = model_name or t.model_name
     inv_row = edit.get_inventory_row(main_text, t.slug)
-    specs = [(k, v) for k, v in edit.get_specs(text) if k.strip().lower() != "category"]
+    all_specs = {k.strip().lower(): repo.plain(v) for k, v in edit.get_specs(text)}
+    specs = [(k, v) for k, v in edit.get_specs(text) if k.strip().lower() not in ("category", "type")]
+    category = "" if t.category == "Uncategorized" else t.category
+    kind, detail = repo.split_kind(subtitle, category, all_specs.get("type", ""))
+    brand, model = repo.split_maker(model_name, all_specs.get("model #", ""))
     return {
-        "model_name": model_name or t.model_name,
+        "model_name": model_name,
         "subtitle": subtitle,
-        "category": "" if t.category == "Uncategorized" else t.category,
+        "kind": kind, "detail": detail, "brand": brand, "model": model,
+        "category": category,
         "paid": inv_row.get("paid", ""),
         "value": inv_row.get("value", ""),
         "specs": [list(r) for r in specs],
@@ -477,17 +483,24 @@ async def tool_edit(request: Request):
         return edit_failed(request, back, "Reload the page and try again.", 400)
     pairs = lambda *names: [list(r) for r in zip(*(form.getlist(n) for n in names))]
     clean = lambda rows: [[str(c).strip() for c in r] for r in rows if any(str(c).strip() for c in r)]
-    mine = {
-        "model_name": str(form.get("model_name", "")).strip(),
-        "subtitle": str(form.get("subtitle", "")).strip(),
-        "category": str(form.get("category", "")).strip(),
+    field = lambda k: " ".join(str(form.get(k, "")).split())
+    mine = {k: field(k) for k in ("kind", "detail", "brand", "model")}
+    # The README keeps "Brand Model — Size Type"; rebuild a half only if it was edited,
+    # so saving other fields never rewrites a name the form split differently.
+    same = lambda *ks: all(mine[k] == base.get(k, "") for k in ks)
+    mine |= {
+        "model_name": base["model_name"] if same("brand", "model") and "brand" in base
+                      else f"{mine['brand']} {mine['model']}".strip(),
+        "subtitle": base["subtitle"] if same("kind", "detail") and "kind" in base
+                    else f"{mine['detail']} {mine['kind']}".strip(),
+        "category": field("category"),
         "paid": money_text(str(form.get("paid", ""))),
         "value": money_text(str(form.get("value", "")), approx=True),
         "specs": clean(pairs("spec_k", "spec_v")),
         "parts": clean(pairs("part_item", "part_spec", "part_where", "part_price")),
     }
     if not mine["model_name"]:
-        return edit_failed(request, back, "Enter the brand and model.", 400)
+        return edit_failed(request, back, "Enter the brand or model.", 400)
     if any(not k for k, _ in mine["specs"]):
         return edit_failed(request, back, "Every detail needs a label.", 400)
 
@@ -500,6 +513,7 @@ async def tool_edit(request: Request):
         model_name = m("The name", base["model_name"], mine["model_name"], cur["model_name"])
         subtitle = m("The name", base["subtitle"], mine["subtitle"], cur["subtitle"])
         category = m("The category", base["category"], mine["category"], cur["category"])
+        kind = m("The type", base.get("kind", cur["kind"]), mine["kind"], cur["kind"])
         paid = m("The price paid", base["paid"], mine["paid"], cur["paid"])
         value = m("The replacement value", base["value"], mine["value"], cur["value"])
         specs = edit.merge_specs([tuple(r) for r in base["specs"]],
@@ -516,6 +530,11 @@ async def tool_edit(request: Request):
                          category if category != cur["category"] else all_specs[cat_row][1]))
         elif category and not has_inv:
             specs.insert(0, ("Category", category))
+        # A Type row only when the type isn't the category, which is how most tools read.
+        type_row = next((i for i, (k, _) in enumerate(all_specs) if k.strip().lower() == "type"), None)
+        if (kind and kind.lower() not in (category.lower(), subtitle.lower())
+                and subtitle.lower().endswith(kind.lower())):
+            specs.insert(min(type_row if type_row is not None else len(specs), len(specs)), ("Type", kind))
         new = edit.set_specs(new, specs)
         if parts != cur["parts"]:
             new = edit.set_table(new, "consumables", "Consumables & parts", PART_HEADER, parts)
@@ -630,10 +649,13 @@ async def tool_new(request: Request):
         return render(request, "edit_new.html", back=("/tools", "Tools"), title="New Tool",
                       categories=[c for c, _ in inventory.get().categories if c != "Uncategorized"])
     form = await request.form()
-    f = {k: str(form.get(k, "")).strip() for k in
-         ("model_name", "subtitle", "category", "model_no", "serial", "purchased", "paid", "value")}
-    if not f["model_name"]:
-        return edit_failed(request, back, "Enter the brand and model.", 400)
+    f = {k: " ".join(str(form.get(k, "")).split()) for k in
+         ("kind", "detail", "brand", "category", "model_no", "serial", "purchased", "paid", "value")}
+    if not f["kind"]:
+        return edit_failed(request, back, "Enter the type of tool.", 400)
+    f["model_name"] = f"{f['brand']} {f['model_no']}".strip() or f["kind"]
+    f["subtitle"] = f"{f['detail']} {f['kind']}".strip()
+    f["category"] = f["category"] or f["kind"]
     paid, value = money_text(f["paid"]), money_text(f["value"], approx=True)
     created = {"slug": ""}
 
@@ -645,6 +667,8 @@ async def tool_new(request: Request):
         created["slug"] = slug
         specs = [("Category", f["category"]), ("Model #", f["model_no"]), ("Serial #", f["serial"]),
                  ("Purchased", f["purchased"]), ("Replacement value", value)]
+        if f["kind"].lower() != f["category"].lower():
+            specs.insert(1, ("Type", f["kind"]))
         write_text(root / "tools" / slug / "README.md",
                    edit.new_tool_readme(f["model_name"], f["subtitle"], specs))
         main_p = root / "README.md"
