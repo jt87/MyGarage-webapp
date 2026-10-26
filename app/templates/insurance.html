@@ -56,7 +56,7 @@
     {% for t in inv.tools %}
     <tr>
       <td>{% if t.cover %}<img src="{{ t.cover.square }}&w=320" alt="">{% endif %}</td>
-      <td><strong>{{ t.display_name }}</strong><br>{{ t.display_sub }}</td>
+      <td><strong>{{ t.kind }}</strong>{% if t.kind_detail %} · {{ t.kind_detail }}{% endif %}<br>{{ t.model_line }}</td>
       <td>{{ t.model_no|truncate(40) }}<br>{{ t.serial.split('. ')[0]|truncate(40) or '—' }}</td>
       <td>{{ t.spec_text.get('purchased', '')|truncate(70) or '—' }}</td>
       <td class="n">{{ t.paid_text or '—' }}</td>

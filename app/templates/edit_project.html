@@ -23,8 +23,8 @@
   <div class="section">
     <div class="section-header">Tools Used</div>
     <div class="group">
-      {% for t in tools|sort(attribute="display_name") %}
-      <label class="row has-check"><input class="check" type="checkbox" name="tools" value="{{ t.slug }}" {% if t.slug in s.tools %}checked{% endif %}><span class="row-body"><span class="row-title clip">{{ t.display_name }}</span><span class="row-sub clip">{{ t.display_sub }}</span></span></label>
+      {% for t in tools|sort(attribute="kind_detail")|sort(attribute="kind") %}
+      <label class="row has-check"><input class="check" type="checkbox" name="tools" value="{{ t.slug }}" {% if t.slug in s.tools %}checked{% endif %}><span class="row-body"><span class="row-title clip">{{ t.kind }}</span>{% if t.kind_detail %}<span class="row-sub clip">{{ t.kind_detail }}</span>{% endif %}<span class="row-sub clip">{{ t.model_line }}</span></span></label>
       {% endfor %}
     </div>
     <p class="section-footer">Listed under “Tools used” in the project's README, and the project shows on each tool's page.</p>

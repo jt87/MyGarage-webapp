@@ -467,14 +467,39 @@ class Tool:
     def model_no(self) -> str:
         return self.spec_text.get("model #", "")
 
-    # What the tool is ("12" Band Saw") leads; brand and model are secondary.
-    @property
-    def display_name(self) -> str:
-        return self.subtitle or self.model_name
+    # Display order: what the tool is ("Band Saw"), its size/variant ("12" 2-Speed"),
+    # then who made it and the model. Split from the name when it ends with the
+    # category; otherwise the whole name is the kind.
+    def _kind_split(self) -> tuple[str, str]:
+        name, cat = self.subtitle.strip(), self.category.strip()
+        if cat and len(name) > len(cat) and name.lower().endswith(cat.lower()):
+            return name[-len(cat):], name[:-len(cat)].strip(" ,-–—")
+        return (name or self.model_name), ""
 
     @property
-    def display_sub(self) -> str:
-        return self.model_name if self.subtitle else ""
+    def kind(self) -> str:
+        return self._kind_split()[0]
+
+    @property
+    def kind_detail(self) -> str:
+        return self._kind_split()[1]
+
+    @property
+    def model(self) -> str:
+        return self.model_no.split(" (")[0].strip() or self.model_name.split()[-1]
+
+    @property
+    def maker(self) -> str:
+        name = self.model_name.strip()
+        if name.lower().endswith(self.model.lower()):
+            name = name[:-len(self.model)].strip()
+        return name
+
+    @property
+    def model_line(self) -> str:
+        if not self.subtitle:
+            return ""
+        return " · ".join(s for s in (self.maker, f"Model: {self.model}") if s)
 
 
 @dataclass
@@ -533,7 +558,7 @@ class Inventory:
     @property
     def tools_by_category(self) -> list[tuple[str, list[Tool]]]:
         groups: dict[str, list[Tool]] = {}
-        for t in sorted(self.tools, key=lambda t: t.display_name.lower()):
+        for t in sorted(self.tools, key=lambda t: (t.kind.lower(), t.kind_detail.lower())):
             groups.setdefault(t.category, []).append(t)
         return sorted(groups.items())
 

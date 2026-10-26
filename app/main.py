@@ -192,7 +192,7 @@ async def tool(request: Request):
     t = inv.tool(request.path_params["slug"])
     if not t:
         raise HTTPException(404)
-    return render(request, "tool.html", t=t, back=("/tools", "Tools"), title=t.model_name)
+    return render(request, "tool.html", t=t, back=("/tools", "Tools"), title=t.kind)
 
 
 async def consumables(request: Request):
@@ -420,7 +420,7 @@ async def tool_log(request: Request):
     t = tool_or_404(request)
     back = f"{t.url}/log"
     if request.method == "GET":
-        return render(request, "edit_log.html", t=t, back=(t.url, t.model_name),
+        return render(request, "edit_log.html", t=t, back=(t.url, t.kind),
                       title="Log Maintenance", today=today())
     form = await request.form()
     date, what = str(form.get("date", "")).strip(), str(form.get("what", "")).strip()
@@ -469,7 +469,7 @@ async def tool_edit(request: Request):
         state = tool_form_state(t, read_text(REPO_PATH / "tools" / t.slug / "README.md"),
                                 read_text(REPO_PATH / "README.md"))
         return render(request, "edit_tool.html", t=t, s=state, base=json.dumps(state),
-                      back=(t.url, t.model_name), title="Edit Tool")
+                      back=(t.url, t.kind), title="Edit Tool")
     form = await request.form()
     try:
         base = json.loads(str(form.get("base", "")))
@@ -558,7 +558,7 @@ async def tool_add(request: Request):
         kind = request.query_params.get("kind", "photo")
         return render(request, "edit_add.html", t=t, kinds=UPLOAD_KINDS, action=back,
                       kind=kind if kind in UPLOAD_KINDS else "photo",
-                      back=(t.url, t.model_name), title="Add Files")
+                      back=(t.url, t.kind), title="Add Files")
     return await add_files(request, f"tools/{t.slug}", t.model_name, back, t.url)
 
 
