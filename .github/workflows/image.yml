@@ -86,4 +86,10 @@ jobs:
       - run: python3 scripts/release_notes.py "${GITHUB_REF_NAME#v}" > notes.md
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" --title "MyGarage ${GITHUB_REF_NAME#v}" --notes-file notes.md --verify-tag
+        # A release made on GitHub (which is how the tag gets created) only gets its notes and title filled in.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "MyGarage ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" --title "MyGarage ${GITHUB_REF_NAME#v}" --notes-file notes.md --verify-tag
+          fi

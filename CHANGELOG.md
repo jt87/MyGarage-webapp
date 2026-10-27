@@ -2,7 +2,7 @@
 
 Versions follow [semantic versioning](https://semver.org): a patch release (1.1.1) only fixes things, a minor release (1.2.0) adds features, and a major release (2.0.0) needs something from you when you update. Each release's image is `ghcr.io/jt87/mygarage:<version>`; `latest` is the newest release.
 
-## 1.5.1 (unreleased)
+## 1.5.1 (2026-10-27)
 
 ### Fixed
 - **Edit Tool and New Tool match how tools are shown.** The name is now entered as Type, Size, Brand and Model instead of "Brand & model" and "Name". When the type isn't the tool's category (a multimeter filed under Electrical), it's kept in a Type row in the README so lists show it correctly. A new tool's category defaults to its type.
